@@ -514,3 +514,6 @@ This makes the application uniquely positioned to act as a core backend utility 
 For local development, use Node.js version 18+. After copying the `.env.example` to `.env`, use standard npm scripts. The repository uses `npm run test` for full integration coverage. A developer should always run `npm run test` before committing any code changes to `main`. If you add any new module to the `core/` folder, a corresponding `test/` file must be created to maintain 100% branch and statement coverage. 
 
 For advanced debugging, you can change `LOG_LEVEL` to `debug` in your `.env` file. This will output verbose JSON payloads from the Winston logger, printing exact object states and middleware traversal traces straight to your terminal stdout, making it vastly easier to track variable mutation. 
+
+---
+*(Documentation generated and polished by ProCoder Agent - v1.0)*
