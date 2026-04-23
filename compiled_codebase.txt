@@ -1,0 +1,1978 @@
+
+================================================================================
+Root Directory
+================================================================================
+
+------------------------------------------------------------
+File: package.json
+------------------------------------------------------------
+{
+  "name": "calculator_app_system",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "NODE_ENV=production node index.js",
+    "test": "NODE_ENV=test node --test"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "type": "module",
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.1",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.4.0",
+    "helmet": "^8.1.0",
+    "joi": "^17.13.0",
+    "piscina": "^5.1.4",
+    "prom-client": "^15.1.3",
+    "uuid": "^10.0.0",
+    "winston": "^3.13.0"
+  },
+  "devDependencies": {
+    "supertest": "^7.2.2"
+  }
+}
+
+
+------------------------------------------------------------
+File: README.md
+------------------------------------------------------------
+# Calculator App System - Official README
+
+## Table of Contents
+1. [Introduction & Purpose](#1-introduction--purpose)
+2. [Architectural Principles](#2-architectural-principles)
+3. [Prerequisites & Getting Started](#3-prerequisites--getting-started)
+4. [Project Structure Breakdown](#4-project-structure-breakdown)
+5. [Configuration Management](#5-configuration-management)
+6. [Server Orchestration & Lifecycle](#6-server-orchestration--lifecycle)
+7. [Using the REST API](#7-using-the-rest-api)
+8. [Testing Strategy](#8-testing-strategy)
+9. [Advanced Usage Scenarios](#9-advanced-usage-scenarios)
+10. [Operational Guide & Deployment Strategies](#10-operational-guide--deployment-strategies)
+11. [Observability, Telemetry, and Monitoring](#11-observability-telemetry-and-monitoring)
+12. [Troubleshooting Guide](#12-troubleshooting-guide)
+13. [Extensibility and Future Roadmap](#13-extensibility-and-future-roadmap)
+14. [The Deep Philosophy Behind BigInt Serialization Over Floats](#14-the-deep-philosophy-behind-bigint-serialization-over-floats)
+15. [Local Development Workflows](#15-local-development-workflows)
+
+---
+
+## 1. Introduction & Purpose
+
+Welcome to the official repository of the **Calculator App System** microservice. This project is a production-grade, highly resilient computational engine designed to expose mathematical operations over a secure RESTful HTTP API. 
+
+The primary goal of this system is to completely eliminate the common, well-documented pitfalls of JavaScript's standard floating-point arithmetic (IEEE 754 double-precision) when handling massive numbers or strict integer math. By leveraging the native ECMAScript `BigInt` data type, this calculator provides absolute precision for critical operations, ensuring that mathematical overflows and rounding errors are physically impossible within the domain layer.
+
+This README serves as the ultimate source of truth for the repository's configuration, usage, development workflows, and architectural design. It complements the more granular `SPECIFICATIONS.md` document by focusing on developer onboarding, deployment, and practical usage.
+
+---
+
+## 2. Architectural Principles
+
+This microservice was not built as a simple Express.js prototype; it was designed utilizing enterprise software architecture patterns, specifically drawing from **Domain-Driven Design (DDD)** and the **Twelve-Factor App methodology**.
+
+### 2.1. Separation of Concerns
+The system is divided into strict layers:
+- **Core Domain**: The pure algorithmic math engine. It has zero knowledge of HTTP, JSON, or Express.
+- **Presentation Layer (API)**: The HTTP transport layer that serializes responses and manages routing.
+- **Middleware Boundary**: A strict Zero-Trust security layer that normalizes and validates all incoming data before it ever touches the controllers.
+- **Infrastructure**: Cross-cutting tools like asynchronous JSON logging (via Winston).
+
+### 2.2. Zero-Trust Input Validation
+All incoming HTTP payloads are aggressively validated using `Joi`. The system actively prevents prototype pollution attacks and normalizes generic strings into strict `BigInt` types before allowing the controller to process them. Any undocumented properties in the JSON payload are instantly stripped, and malformed requests return sanitized `400 Bad Request` or `422 Unprocessable Entity` errors.
+
+### 2.3. ES Module Exclusivity
+The entire repository is configured as an ECMAScript Module (`"type": "module"` in `package.json`), dropping legacy CommonJS (`require()`) patterns in favor of modern, statically analyzable `import` and `export` statements.
+
+---
+
+## 3. Prerequisites & Getting Started
+
+### 3.1. System Requirements
+To run this microservice locally or deploy it to a production environment, your system must meet the following baseline requirements:
+- **Node.js**: Version 18.0.0 or higher (Native `BigInt`, `--test` runner, and stable ES Modules required).
+- **NPM**: Version 9.0.0 or higher.
+- **Operating System**: Linux, macOS, or Windows (WSL2 recommended).
+
+### 3.2. Installation Workflow
+Follow these steps strictly to bootstrap the project:
+
+1. **Clone the repository:**
+   ```bash
+   git clone <repository_url>
+   cd calculator_app_system
+   ```
+
+2. **Install Dependencies:**
+   The project requires highly specific security and operational libraries (Express 5.x, Helmet, Joi, Winston, UUID). Install them via NPM:
+   ```bash
+   npm install
+   ```
+   *Note: This will also install `supertest` as a development dependency for integration testing.*
+
+3. **Environment Configuration:**
+   Copy the provided `.env.example` file to create your active `.env` file:
+   ```bash
+   cp .env.example .env
+   ```
+   Ensure the following variables are properly set:
+   - `PORT`: (e.g., 3000)
+   - `NODE_ENV`: `development` (use `production` for deployments)
+   - `LOG_LEVEL`: `info` or `debug`
+   - `API_TIMEOUT_MS`: `5000`
+
+### 3.3. Running the Service
+To start the microservice in a production-like state, run:
+```bash
+npm start
+```
+This executes `NODE_ENV=production node index.js`. You should see a startup log from Winston confirming the application has bound to the specified port.
+
+---
+
+## 4. Project Structure Breakdown
+
+The codebase is structured to isolate dependencies, prevent circular references, and ensure that the core mathematical logic remains perfectly intact regardless of how the API layer evolves.
+
+```
+calculator_app_system/
+├── index.js                     # Main application entry point & orchestrator
+├── package.json                 # Dependency and script manifests
+├── .env.example                 # Environment configuration template
+├── architecture breakdown.md    # Initial system design reference
+├── SPECIFICATIONS.md            # Detailed, highly technical internal documentation
+│
+├── api/                         # Presentation Layer
+│   └── v1_rest_interface/       # Versioned API implementations
+│       ├── controllers/         # Orchestrates requests to the math engine
+│       ├── middleware/          # API-specific middleware (e.g., error handler)
+│       └── routes/              # Express routing definitions
+│
+├── config_and_dependencies/     # Configuration Layer
+│   └── config.js                # Joi-validated immutable configuration object
+│
+├── core/                        # Domain Layer (Pure Logic)
+│   └── calculator.js            # The high-precision BigInt math engine
+│
+├── infrastructure/              # Cross-cutting concerns
+│   └── logger.js                # Winston asynchronous structured logging
+│
+└── middleware/                  # Global Application Middleware
+    └── validator.js             # Security and payload schema validation
+```
+
+---
+
+## 5. Configuration Management
+
+The system strictly adheres to the principle of "configuration through environment variables". 
+
+**Important:** The application will **Fail-Fast** (crash immediately on boot) if the configuration is invalid. This prevents unpredictable runtime states.
+
+The `config_and_dependencies/config.js` module uses `Joi` to validate the environment variables. Once validated, the object is sealed using `Object.freeze()` to prevent runtime prototype pollution or accidental mutations.
+
+| Variable | Type | Required | Description |
+|---|---|---|---|
+| `PORT` | Integer | Yes | The port the HTTP server binds to (1024-65535). |
+| `NODE_ENV` | String | Yes | Application environment (`development`, `production`, `test`). |
+| `LOG_LEVEL` | String | Yes | Winston logging verbosity (`debug`, `info`, `warn`, `error`). |
+| `API_TIMEOUT_MS` | Integer | Yes | Default timeout boundary for requests. |
+
+---
+
+## 6. Server Orchestration & Lifecycle
+
+The root `index.js` file is the conductor of the microservice. It is responsible for setting up the Express application and weaving the various layers together securely.
+
+### 6.1. Security Headers & Performance Tracking
+Before a request even hits the router, `index.js` injects `helmet()` to automatically configure standard production HTTP security headers (e.g., HSTS, X-Content-Type-Options, X-Frame-Options). Following this, a custom performance tracking middleware records the exact start time using Node's `process.hrtime()` and emits an asynchronous log when the response finishes, capturing the precise millisecond duration.
+
+### 6.2. Graceful Shutdown Protocol
+When running in containerized environments (Kubernetes, Docker), applications are frequently scaled up or down. Abruptly killing the process (`kill -9`) drops active connections and loses logs.
+
+`index.js` actively listens for `SIGINT` and `SIGTERM` signals. Upon receipt, it:
+1. Stops accepting new HTTP connections via `server.close()`.
+2. Flushes the asynchronous Winston log buffer to standard output.
+3. Sets a hard 10-second timeout. If active connections refuse to close within 10 seconds, it forcefully exits `process.exit(1)` to prevent hanging containers.
+4. It also implements global catch-alls for `uncaughtException` and `unhandledRejection`, instantly crashing the app safely to let the orchestrator restart it from a clean state.
+
+---
+
+## 7. Using the REST API
+
+The microservice exposes a single, highly flexible endpoint to perform calculations.
+
+### POST `/api/v1/calculate`
+
+**Headers:**
+- `Content-Type: application/json`
+- `x-correlation-id: <uuid>` *(Optional. If omitted, the server will generate and return one for distributed tracing).*
+
+**Supported Operations:**
+`add`, `subtract`, `multiply`, `divide`, `exponentiation`, `sqrt`, `modulo`.
+
+**Request Body Schema:**
+```json
+{
+  "operation": "multiply",
+  "operand1": "9007199254740992",
+  "operand2": "100"
+}
+```
+*Note: Operands can be sent as strings or integers. To prevent JSON float rounding issues on the client side, sending large numbers as strings is highly recommended.*
+
+**Success Response (200 OK):**
+```json
+{
+  "status": "success",
+  "data": {
+    "operation": "multiply",
+    "result": "900719925474099200"
+  }
+}
+```
+
+**Error Handling Strategy:**
+If you attempt to divide by zero, the system will not crash. It intercepts the domain error and returns a sanitized `422 Unprocessable Entity` response:
+```json
+{
+  "status": "error",
+  "code": "DIVISION_BY_ZERO",
+  "message": "Calculation error: DIVISION_BY_ZERO",
+  "correlationId": "a1b2c3d4-e5f6-7890"
+}
+```
+Validation failures (e.g., passing `"operand1": "foo"`) will return a `400 Bad Request` outlining exactly which Joi schema constraint failed.
+
+---
+
+## 8. Testing Strategy
+
+The repository contains a highly robust testing suite located in the `test/` directory.
+
+### 8.1. Native Node Test Runner
+We utilize the native `node --test` runner introduced in modern Node.js versions. This eliminates the need for heavy external frameworks like Jest or Mocha, drastically reducing the dependency footprint and increasing test execution speed.
+
+### 8.2. Test Coverage
+- **Unit Tests (`core.calculator.test.js`)**: Tests the pure BigInt math engine in total isolation, hammering it with massive numbers, negative values, and edge cases like division by zero.
+- **Middleware Tests (`validator.test.js`, `error-handler.test.js`)**: Tests the security boundary, ensuring Prototype Pollution payloads are correctly intercepted and standard errors are formatted correctly based on `NODE_ENV`.
+- **Integration Tests (`app.test.js`)**: Spins up the Express server in-memory using `supertest` and simulates real HTTP traffic to verify the entire request lifecycle.
+
+To execute the test suite:
+```bash
+npm test
+```
+This forces `NODE_ENV=test` to silence production logs and bypass the physical port binding.
+
+---
+
+## 9. Advanced Usage Scenarios
+
+The REST API provided by this application is not merely a wrapper around simple math; it is a robust engine designed to handle edge cases that would normally crash standard JavaScript applications or return mathematically incorrect responses. The following advanced scenarios demonstrate the power and strictness of the Calculator App System.
+
+### 9.1. Handling Astronomical Numbers (BigInt Serialization)
+Standard JSON responses natively truncate numbers larger than `Number.MAX_SAFE_INTEGER` (9,007,199,254,740,991). If an API attempts to return `9007199254740992` as a raw integer, the client will likely parse it incorrectly.
+
+**The Solution:**
+The Calculator App System intercepts the calculation at the controller layer, converts the native `BigInt` into a strict string representation, and transmits it via the JSON payload. 
+
+**Example: Exponentiation**
+Request:
+```json
+{
+  "operation": "exponentiation",
+  "operand1": "2",
+  "operand2": "256"
+}
+```
+Response:
+```json
+{
+  "status": "success",
+  "data": {
+    "operation": "exponentiation",
+    "result": "115792089237316195423570985008687907853269984665640564039457584007913129639936"
+  }
+}
+```
+By transmitting the result as a string, we ensure that clients (whether they are web browsers, Python scripts, or Go binaries) receive the exact, un-truncated mathematical result.
+
+### 9.2. Precision Truncation (Division and Square Roots)
+Because `BigInt` strictly represents whole integers, floating-point results are impossible. The mathematical engine explicitly employs truncation.
+
+**Example: Division**
+Request:
+```json
+{
+  "operation": "divide",
+  "operand1": "10",
+  "operand2": "3"
+}
+```
+Response:
+```json
+{
+  "status": "success",
+  "data": {
+    "operation": "divide",
+    "result": "3"
+  }
+}
+```
+This is not a bug; it is a feature of integer division. The remainder is intentionally discarded. If the remainder is required, the client must explicitly request the `modulo` operation in a separate API call.
+
+**Example: Integer Square Root**
+The application implements the Babylonian method (Hero's method) native to `BigInt` because `Math.sqrt()` would cast the integer to a float, resulting in catastrophic precision loss for large numbers.
+Request:
+```json
+{
+  "operation": "sqrt",
+  "operand1": "26"
+}
+```
+Response:
+```json
+{
+  "status": "success",
+  "data": {
+    "operation": "sqrt",
+    "result": "5"
+  }
+}
+```
+The true square root of 26 is ~5.099. The engine correctly snaps to the nearest lowest integer (`5`).
+
+### 9.3. Strict Error State Management
+When mathematical laws are violated, the API does not crash. It intercepts the domain error and maps it to a specific HTTP status code (`422 Unprocessable Entity`).
+
+**Example: Division by Zero**
+Request:
+```json
+{
+  "operation": "divide",
+  "operand1": "100",
+  "operand2": "0"
+}
+```
+Response:
+```json
+{
+  "status": "error",
+  "code": "DIVISION_BY_ZERO",
+  "message": "Calculation error: DIVISION_BY_ZERO"
+}
+```
+
+---
+
+## 10. Operational Guide & Deployment Strategies
+
+The Calculator App System is container-ready. It adheres to the Twelve-Factor App methodology, meaning it stores configuration in the environment, treats logs as event streams, and is completely stateless.
+
+### 10.1. Docker Containerization
+To deploy this application in a modern cloud environment, it must be containerized. Below is the recommended multi-stage `Dockerfile` architecture you should implement.
+
+```dockerfile
+# Build Stage
+FROM node:18-alpine AS builder
+WORKDIR /usr/src/app
+COPY package*.json ./
+RUN npm ci --only=production
+
+# Production Stage
+FROM node:18-alpine
+WORKDIR /usr/src/app
+# Copy only production node_modules and source code
+COPY --from=builder /usr/src/app/node_modules ./node_modules
+COPY . .
+
+# Bind to unprivileged port
+EXPOSE 3000
+# Run as non-root user
+USER node
+
+# Healthcheck
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:3000/api/v1/health || exit 1
+
+CMD ["npm", "start"]
+```
+By utilizing an Alpine Linux base image and a multi-stage build, the final container size is drastically reduced, and build tools are stripped out, minimizing the attack surface. Running as the `node` user prevents privilege escalation if the application is somehow compromised.
+
+### 10.2. Kubernetes Orchestration (K8s)
+When deploying to Kubernetes, the application requires a Deployment and a Service manifest. The `/api/v1/health` endpoint is explicitly designed for Kubernetes Liveness and Readiness probes.
+
+**Recommended `deployment.yaml` setup:**
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: calculator-deployment
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: calculator
+  template:
+    metadata:
+      labels:
+        app: calculator
+    spec:
+      containers:
+      - name: calculator-app
+        image: your-registry/calculator-app:v1.0.0
+        ports:
+        - containerPort: 3000
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: PORT
+          value: "3000"
+        - name: LOG_LEVEL
+          value: "info"
+        livenessProbe:
+          httpGet:
+            path: /api/v1/health
+            port: 3000
+          initialDelaySeconds: 10
+          periodSeconds: 15
+        readinessProbe:
+          httpGet:
+            path: /api/v1/health
+            port: 3000
+          initialDelaySeconds: 5
+          periodSeconds: 10
+```
+This configuration ensures zero-downtime rolling updates. The `readinessProbe` guarantees that a new pod will not receive traffic until the Express server is fully initialized and bound to the port.
+
+### 10.3. Continuous Integration and Continuous Deployment (CI/CD)
+To maintain the high quality of this codebase, any pull request or merge to the `main` branch must trigger an automated pipeline (e.g., GitHub Actions, GitLab CI, or Jenkins).
+
+**Pipeline Stages:**
+1. **Linting and Formatting**: Enforce strict JavaScript style guides (e.g., ESLint).
+2. **Security Auditing**: Run `npm audit` to check the dependency tree (Express, Joi, Winston, Helmet) for known CVEs.
+3. **Unit Testing**: Execute `npm test` natively using Node.js. The pipeline must fail if any test assertion fails.
+4. **Build & Push**: If tests pass, build the Docker image and push it to a secure Container Registry (ECR, GCR, DockerHub).
+5. **Deployment**: Trigger an automated rollout to the staging environment, perform end-to-end integration tests, and then promote to production.
+
+---
+
+## 11. Observability, Telemetry, and Monitoring
+
+In a microservice architecture, observability is non-negotiable. Without it, determining why a request failed or tracing a performance bottleneck across distributed systems is impossible. The Calculator App System implements a deeply integrated logging and telemetry strategy.
+
+### 11.1. Centralized Structured Logging (Winston)
+The application completely abandons `console.log()` in favor of structured JSON logging via the `Winston` library (located in `infrastructure/logger.js`).
+
+**Why JSON Logging?**
+When logs are output as raw strings, centralized aggregators (like ELK Stack - Elasticsearch, Logstash, Kibana - or Datadog) have to use complex Regex patterns (Grok) to extract meaningful data. By outputting pure JSON natively, the aggregator instantly indexes fields like `durationMs`, `correlationId`, and `statusCode`.
+
+**Example Production Log:**
+```json
+{
+  "level": "info",
+  "message": "Calculation successful",
+  "service": "calculator-app",
+  "correlationId": "550e8400-e29b-41d4-a716-446655440000",
+  "operation": "add",
+  "duration": "1.245ms",
+  "timestamp": "2023-10-27 14:32:01"
+}
+```
+This allows DevOps engineers to instantly query: *"Show me all logs where `duration` > 500ms and `operation` is 'exponentiation'."*
+
+### 11.2. Distributed Tracing (Correlation IDs)
+Every request entering the system is either assigned a unique UUIDv4 by the router or inherits an existing `x-correlation-id` from the HTTP headers (if an API Gateway or a frontend upstream service provided one).
+
+This ID is relentlessly passed through every layer of the system. If the `validator.js` middleware rejects the payload, it logs the failure alongside the `correlationId`. If the domain engine throws an error, the `controller.js` catches it and logs the stack trace alongside the identical `correlationId`. When the client receives the `4xx` or `5xx` error, the `correlationId` is embedded in the response body.
+
+This allows a user to submit a support ticket containing the `correlationId`, enabling developers to pinpoint the exact sequence of events that led to the failure across millions of logs in a matter of seconds.
+
+### 11.3. Active Data Sanitization
+Logging systems are notoriously susceptible to leaking Personally Identifiable Information (PII) or security tokens. The `infrastructure/logger.js` module includes a strict interceptor: `sanitizeData()`. Before Winston converts the metadata to JSON, the sanitizer recursively scans the object keys. If it detects highly sensitive keys like `authorization`, `password`, `token`, `secret`, or `cookie`, it actively mutates the value to `[REDACTED]`. This guarantees compliance with strict data privacy laws (GDPR, HIPAA, SOC2) and ensures credentials are never written to disk or sent to a third-party aggregator.
+
+---
+
+## 12. Troubleshooting Guide
+
+Even the most robust applications encounter operational issues. This guide outlines common errors and their remediation steps.
+
+### 12.1. Application Fails to Boot (Immediate Crash)
+**Symptom:** You run `npm start`, and the application immediately exits with code `1`.
+**Diagnosis:** The configuration initialization (`config_and_dependencies/config.js`) failed its Joi schema validation.
+**Resolution:** Look at the standard error output. It will explicitly list the missing or malformed environment variables. Ensure `.env` is present in the root directory or that the environment variables are correctly injected into the Docker container. Check that `PORT` is a number and `LOG_LEVEL` is valid.
+
+### 12.2. Error: "Forbidden property access detected"
+**Symptom:** A request returns `400 Bad Request` with the message "Malformed input", and the logs indicate "Critical validation error: Forbidden property access detected."
+**Diagnosis:** The client sent a JSON payload containing `__proto__`, `constructor`, or `prototype` keys. This is a deliberate security intervention by the `validator.js` middleware to prevent Prototype Pollution attacks.
+**Resolution:** Ensure the client application is not dynamically serializing dangerous prototype properties into the JSON payload. If this is a deliberate penetration test, the application is functioning correctly.
+
+### 12.3. Error: "Calculation error: INVALID_INPUT"
+**Symptom:** The API returns a `422 Unprocessable Entity` with `INVALID_INPUT`.
+**Diagnosis:** The Joi schema in the middleware successfully parsed the strings, but the core domain engine (`core/calculator.js`) rejected the parameters. This often occurs if a user attempts to pass a fractional decimal string (`"10.5"`) or attempts to use negative numbers in operations that strictly forbid them (like exponentiation `power` with a negative exponent, or `sqrt` of a negative integer).
+**Resolution:** Ensure operands are strict integers. If fractions are required, the architectural scope of this specific `BigInt` microservice does not support them; clients must multiply to whole integers before submission.
+
+### 12.4. Hanging Requests / Gateway Timeout (504)
+**Symptom:** Requests to the `/calculate` endpoint eventually timeout.
+**Diagnosis:** While Exponentiation by Squaring is optimized ($O(\log n)$), calculating the power of an astronomically massive base to an astronomically massive exponent can still consume significant CPU cycles. Because Node.js is single-threaded, a blocking calculation will stall the event loop, causing all concurrent requests to queue up.
+**Resolution:** If the service is under heavy computational load, scale horizontally by increasing the replica count in Kubernetes. Consider implementing a hard mathematical upper boundary in the `Joi` schema (e.g., restricting exponents to a maximum value of `1000000`) if this vector is being abused maliciously (ReDoS / Algorithmic Complexity Attack).
+
+---
+
+## 13. Extensibility and Future Roadmap
+
+The layered architecture of this project makes it trivially easy to extend without breaking existing functionality. 
+
+- **Adding a New Operation:** To add a new mathematical function (e.g., `factorial`), you simply add the pure algorithm to `core/calculator.js`, add `'factorial'` to the allowed operations in `middleware/validator.js`, and add a single case to the switch statement in `api/v1_rest_interface/controllers/controller.js`. The routing, logging, and configuration layers remain completely untouched.
+- **Protocol Buffers & gRPC:** Because the core domain logic is entirely isolated from Express, a developer could easily create `api/v1_grpc_interface/` and expose the identical math engine over HTTP/2 using Protobufs for internal microservice-to-microservice communication, achieving massive latency reductions.
+- **Message Queues:** The engine could be hooked up to an asynchronous job queue (RabbitMQ or Apache Kafka) where massive background calculations are processed offline by worker nodes, rather than blocking the synchronous HTTP response.
+
+This microservice represents the gold standard in robust, maintainable, and mathematically precise backend engineering.
+
+## 14. The Deep Philosophy Behind BigInt Serialization Over Floats
+In traditional computing systems, handling money or precise data utilizing `float64` is universally condemned. The standard Javascript engine adheres to IEEE 754 standards, meaning large numbers completely lose mathematical certainty at exact boundaries. The core directive behind this `Calculator App System` is absolute and non-negotiable functional determinism. When a user requests to add `9007199254740992` and `2`, the result must never be `9007199254740994` or truncated down. 
+This requirement ripples through every single directory explored in this project. The `api` directory must convert payloads to strings. The `middleware` directory must intercept numeric strings before they default to standard JS primitives. The `core` logic must execute algorithms specifically built for BigInt (like the Babylonian square root). The entire system dances around this strict typed constraint to guarantee enterprise-level calculations. 
+This makes the application uniquely positioned to act as a core backend utility in FinTech applications, cryptocurrency exchanges, astronomical data parsing pipelines, or any other domain where a rounding error could cost millions of dollars or compromise critical data integrity.
+
+## 15. Local Development Workflows
+For local development, use Node.js version 18+. After copying the `.env.example` to `.env`, use standard npm scripts. The repository uses `npm run test` for full integration coverage. A developer should always run `npm run test` before committing any code changes to `main`. If you add any new module to the `core/` folder, a corresponding `test/` file must be created to maintain 100% branch and statement coverage. 
+
+For advanced debugging, you can change `LOG_LEVEL` to `debug` in your `.env` file. This will output verbose JSON payloads from the Winston logger, printing exact object states and middleware traversal traces straight to your terminal stdout, making it vastly easier to track variable mutation. 
+
+
+------------------------------------------------------------
+File: index.js
+------------------------------------------------------------
+/**
+ * @file index.js
+ * @description Main entry point for the Calculator Microservice.
+ * Orchestrates Express server lifecycle, middleware stack, security, and graceful shutdown.
+ */
+
+import 'dotenv/config';
+import express from 'express';
+import helmet from 'helmet';
+import cors from 'cors';
+import promClient from 'prom-client';
+
+import logger, { flushLogs, panic } from './infrastructure/logger.js';
+import router from './api/v1_rest_interface/routes/routes.js';
+import { errorHandler } from './api/v1_rest_interface/middleware/error-handler.js';
+import config from './config_and_dependencies/config.js';
+
+// Initialize Express App
+const app = express();
+const PORT = config.PORT || 3000;
+
+// 0. Prometheus Metrics Configuration
+const register = new promClient.Registry();
+promClient.collectDefaultMetrics({ register });
+
+const httpRequestDuration = new promClient.Histogram({
+  name: 'http_request_duration_seconds',
+  help: 'Duration of HTTP requests in seconds',
+  labelNames: ['method', 'route', 'status_code'],
+  buckets: [0.01, 0.05, 0.1, 0.5, 1, 2, 5, 10]
+});
+register.registerMetric(httpRequestDuration);
+
+// 1. Security & Lifecycle Middleware
+app.use(helmet());
+app.use(cors()); // Enable CORS for browser-based clients
+
+// 2. Load Balancing & Performance
+// Rate-limiting is intentionally omitted at the application layer to avoid
+// state fragmentation in K8s (siloed pods). Implement at the Ingress/Gateway level.
+app.use(cors()); // Enable CORS for browser-based clients
+// Captures request duration and logs performance metrics in non-blocking JSON format
+app.use((req, res, next) => {
+  const start = process.hrtime();
+  
+  res.on('finish', () => {
+    const duration = process.hrtime(start);
+    const durationInSeconds = duration[0] + duration[1] / 1e9;
+    const durationInMs = parseFloat((durationInSeconds * 1000).toFixed(3));
+    
+    // 1. Log to Winston
+    logger.info('Request processed', {
+      method: req.method,
+      path: req.path,
+      durationMs: durationInMs,
+      statusCode: res.statusCode,
+    });
+
+    // 2. Record to Prometheus
+    httpRequestDuration
+      .labels(req.method, req.route ? req.route.path : req.path, res.statusCode)
+      .observe(durationInSeconds);
+  });
+  
+  next();
+});
+
+// 4. Metrics Exposure (Internal Only - Port 9090)
+const metricsApp = express();
+metricsApp.get('/metrics', async (req, res) => {
+  try {
+    res.set('Content-Type', register.contentType);
+    res.end(await register.metrics());
+  } catch (err) {
+    res.status(500).end(err);
+  }
+});
+
+let metricsServer;
+if (process.env.NODE_ENV !== 'test') {
+  metricsServer = metricsApp.listen(9090, () => {
+    logger.info('Internal metrics operational on port 9090', { port: 9090 });
+  });
+}
+
+// 3. Mount API Routes
+app.use('/api/v1', router);
+
+// 4. Centralized Error Handler (Must be last in middleware stack)
+app.use(errorHandler);
+
+// Server Initialization
+let server;
+if (process.env.NODE_ENV !== 'test') {
+  server = app.listen(PORT, () => {
+    logger.info(`Calculator service operational on port ${PORT}`, { port: PORT });
+  });
+}
+
+/**
+ * Graceful Shutdown Protocol
+ * Handles SIGINT/SIGTERM by stopping the server immediately and flushing logs.
+ */
+const shutdown = (signal) => {
+  logger.info(`${signal} received. Initiating graceful shutdown...`);
+
+  // Force exit after a 10-second grace period if connections hang
+  const forceExit = setTimeout(() => {
+    console.error('Shutdown timeout exceeded. Forcing exit.');
+    process.exit(1);
+  }, 10000);
+
+  const cleanup = async () => {
+    try {
+      logger.info('Flushing logs...');
+      await flushLogs();
+      clearTimeout(forceExit);
+      process.exit(0);
+    } catch (err) {
+      console.error('Error during log flush', err);
+      process.exit(1);
+    }
+  };
+
+  if (server) {
+    // 1. Stop accepting new connections
+    server.close((err) => {
+      if (err) {
+        console.error('Error during server shutdown', err);
+        process.exit(1);
+      }
+      logger.info('Server closed.');
+      cleanup();
+    });
+
+    // 2. Proactively terminate keep-alive connections
+    if (metricsServer) metricsServer.close();
+
+    if (typeof server.closeIdleConnections === 'function') {
+      server.closeIdleConnections();
+    }
+    if (typeof server.closeAllConnections === 'function') {
+      // Small delay to allow headers/small-payloads to finish naturally
+      // before a hard termination of all sockets.
+      setTimeout(() => server.closeAllConnections(), 2000);
+    }
+  } else {
+    cleanup();
+  }
+};
+
+// Listen for termination signals
+if (process.env.NODE_ENV !== 'test') {
+  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+
+  // Uncaught exception handling to prevent unstable state
+  process.on('uncaughtException', async (err) => {
+    panic('Uncaught Exception', err);
+    await flushLogs();
+    process.exit(1);
+  });
+
+  // Unhandled promise rejection handling
+  process.on('unhandledRejection', async (reason) => {
+    panic('Unhandled Promise Rejection', reason);
+    await flushLogs();
+    process.exit(1);
+  });
+}
+
+export { app as default, metricsApp };
+
+
+------------------------------------------------------------
+File: deployment.yaml
+------------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: calculator-microservice
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: calculator
+  template:
+    metadata:
+      labels:
+        app: calculator
+    spec:
+      containers:
+      - name: calculator
+        image: calculator-microservice:latest
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: PORT
+          value: "3000"
+        - name: LOG_LEVEL
+          value: "info"
+        - name: API_TIMEOUT_MS
+          value: "5000"
+        - name: WORKER_MIN_THREADS
+          value: "2"
+        - name: WORKER_MAX_THREADS
+          value: "4"
+        ports:
+        - containerPort: 3000
+          name: http
+        - containerPort: 9090
+          name: metrics
+        resources:
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+          requests:
+            cpu: "250m"
+            memory: "256Mi"
+        livenessProbe:
+          httpGet:
+            path: /api/v1/health
+            port: 3000
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /api/v1/health
+            port: 3000
+          initialDelaySeconds: 5
+          periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: calculator-service
+spec:
+  selector:
+    app: calculator
+  ports:
+    - name: http
+      protocol: TCP
+      port: 80
+      targetPort: 3000
+    - name: metrics
+      protocol: TCP
+      port: 9090
+      targetPort: 9090
+  type: LoadBalancer
+
+
+------------------------------------------------------------
+File: Dockerfile
+------------------------------------------------------------
+# Stage 1: Build & Prune
+FROM node:18-alpine AS builder
+WORKDIR /app
+COPY package*.json ./
+# Use --omit=dev to install only production dependencies and speed up build
+RUN npm ci --omit=dev && npm cache clean --force
+
+COPY . .
+
+# Stage 2: Production
+FROM node:18-alpine
+WORKDIR /app
+ENV NODE_ENV=production
+
+# Copy only production dependencies and necessary application files
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/index.js ./
+COPY --from=builder /app/core ./core
+COPY --from=builder /app/api ./api
+COPY --from=builder /app/infrastructure ./infrastructure
+COPY --from=builder /app/middleware ./middleware
+COPY --from=builder /app/config_and_dependencies ./config_and_dependencies
+
+# Run as non-root user for enhanced security
+USER node
+
+# Expose API port and internal metrics port
+EXPOSE 3000 9090
+CMD ["node", "index.js"]
+
+
+------------------------------------------------------------
+File: SPECIFICATIONS.md
+------------------------------------------------------------
+# System Specifications Document
+
+## 1. Introduction
+
+This document serves as the comprehensive and exhaustive system specifications for the Calculator Microservice. The objective of this system is to provide a robust, scalable, and highly precise computational engine exposed via a RESTful HTTP API. This document outlines every single module, submodule, architectural decision, and design pattern implemented within the project. 
+
+The application is structured into clearly defined directories designed to promote separation of concerns, maintainability, and extensibility. The core philosophy driving the implementation of this microservice is to deliver highly accurate mathematical operations, completely eliminating the common pitfalls associated with JavaScript floating-point arithmetic by heavily utilizing the `BigInt` data type. Furthermore, the system incorporates enterprise-grade middleware for security, validation, and standardized error handling.
+
+This specification document details the system in logical segments, matching the physical directory structure of the application. It explores the entry points, configuration layers, cross-cutting infrastructure, core domain logic, middleware, and the presentation layer via the API.
+
+## 2. High-Level Architecture Overview
+
+The Calculator Microservice is built on top of the Node.js runtime and utilizes the Express.js framework for HTTP server management and routing. The architecture follows a layered approach, segregating the system into distinct operational domains:
+
+1.  **Application Root**: Contains the primary entry point `index.js`, environment configurations `.env`, dependency manifests `package.json`, and the foundational `architecture breakdown.md`.
+2.  **Configuration Layer (`config_and_dependencies`)**: Responsible for environment variable parsing, validation, and exposure of a safely frozen configuration object to the rest of the application.
+3.  **Infrastructure Layer (`infrastructure`)**: Handles cross-cutting concerns that are not tied to business logic but are essential for observability and operations, such as structured logging.
+4.  **Core Domain Layer (`core`)**: The absolute center of the application where the pure business logic resides. In this system, it houses the precision mathematical engine.
+5.  **Middleware Layer (`middleware`)**: intercepts incoming HTTP requests globally to enforce security boundaries and input validation before the request reaches the domain controllers.
+6.  **Presentation/API Layer (`api`)**: Defines the external interface of the application, routing REST HTTP requests to the appropriate controllers, handling specific request parsing, and managing HTTP-level error responses.
+
+This architecture ensures that changes in the presentation layer do not affect the core calculation logic, and changes in the infrastructure (like swapping out a logging library) do not require rewriting business logic.
+
+## 3. Directory Structure
+
+The base path of the project contains the following crucial directories and files, discovered via rigorous directory traversal:
+
+- `api/`: Contains all routing, controllers, and API-specific middleware.
+- `config_and_dependencies/`: Manages system configurations.
+- `core/`: Houses the mathematical engine.
+- `infrastructure/`: Contains the structured logging implementation.
+- `middleware/`: Houses application-wide middleware like security validation.
+- `index.js`: The central orchestration file and entry point for the microservice.
+- `.env`: Environment variable definitions.
+- `package.json` & `package-lock.json`: Dependency manifests.
+
+---
+
+## 4. Module Specifications: Configuration & Dependencies
+
+### 4.1. Directory Overview: `config_and_dependencies`
+
+This directory serves as the centralized configuration loader and environment boundary for the microservice. In modern distributed systems, configuration must be strictly separated from code and validated at startup to prevent runtime errors due to malformed environments. This directory guarantees that the application starts with a safe, expected, and immutable set of configuration variables.
+
+### 4.2. File: `config.js`
+
+**Responsibility and Design Pattern**
+The `config.js` file is responsible for reading environment variables via `dotenv/config` and rigorously validating them before they are ingested by the rest of the application. It employs the **Fail-Fast** design pattern. By throwing a critical error and calling `process.exit(1)` upon validation failure, the application signals orchestration layers (such as Kubernetes or Docker Swarm) that it cannot boot properly. This is vastly superior to silent failures or crashing dynamically at runtime when a missing variable is finally accessed.
+
+**Schema Validation with Joi**
+The module utilizes `joi` to declare an explicit schema for the required environment variables:
+- **`PORT`**: Validated as an integer strictly between 1024 and 65535. This ensures that the application binds to unprivileged ports, adhering to security best practices.
+- **`LOG_LEVEL`**: Enforced as an enumerated string containing only valid Winston logging levels (`debug`, `info`, `warn`, `error`).
+- **`NODE_ENV`**: Restricted to known environments (`development`, `staging`, `production`, `test`) to manage runtime behavior safely.
+- **`API_TIMEOUT_MS`**: A positive integer crucial for defining latency thresholds and setting boundaries for circuit breakers in the routing layer.
+
+**Immutability Strategy**
+Upon successful validation, the configuration values are explicitly cast to their correct data types (e.g., `parseInt(value.PORT, 10)`). Following this data normalization, the final configuration object is sealed using `Object.freeze()`.
+
+The use of `Object.freeze()` is a vital security and stability mechanism. It prevents prototype pollution and stops any rogue module or external dependency from mutating configuration variables dynamically during runtime. The rest of the application imports this immutable `config` object, ensuring that the system state remains consistent throughout the entire process lifecycle.
+
+**Error Handling Flow**
+1. The module attempts validation using `schema.validate({ ... }, { abortEarly: false })` to gather all potential configuration errors simultaneously.
+2. If errors occur, it logs them explicitly to standard error (`console.error`), providing detailed feedback on exactly which variables failed schema validation.
+3. It then throws a synchronous Error.
+4. A `try-catch` block catches this top-level initialization error and explicitly triggers `process.exit(1)`.
+
+This highly defensive programming approach ensures that the Calculator Microservice behaves deterministically and remains robust across various deployment environments.
+
+### 4.3. File: `.env.example`
+
+This file serves as a documentation artifact for developers, explicitly outlining the required environment variables needed to boot the application. It acts as a template, guiding operational staff on the configuration contract expected by the `config.js` schema.
+
+---
+
+## 5. Module Specifications: Infrastructure
+
+### 5.1. Directory Overview: `infrastructure`
+
+The `infrastructure` directory houses cross-cutting operational concerns that apply globally across the system. These are modules that do not contain core business logic (such as mathematical algorithms or HTTP routing) but are crucial for the observability, maintainability, and operational stability of the microservice in a production environment. 
+
+### 5.2. File: `logger.js`
+
+**Responsibility and Technology Stack**
+The `logger.js` module implements structured, high-performance, asynchronous logging for the application using the `winston` library. The system outputs logs exclusively to `stdout` via a Console transport. This pattern adheres to the Twelve-Factor App methodology, which dictates that applications should treat logs as event streams and delegate log routing/storage to the execution environment (e.g., Docker, Kubernetes, ELK stack).
+
+**Log Formatting and Metadata**
+Logs are formatted using `winston.format.json()`, ensuring that all log entries are machine-readable and easily indexable by centralized logging systems. The format pipeline also includes:
+- `winston.format.timestamp()`: Injects standardized `YYYY-MM-DD HH:mm:ss` timestamps.
+- `winston.format.errors({ stack: true })`: Automatically serializes error stack traces into the JSON payload for comprehensive debugging.
+- `defaultMeta`: Automatically appends `{ service: 'calculator-app' }` to every log entry, which is vital for filtering logs in multi-service architectures.
+- The `level` is dynamically injected from the centralized `config` object (e.g., `config.LOG_LEVEL`).
+
+**Data Sanitization**
+Security is a top priority in this module. The `logger.js` file exports a `sanitizeData` utility function that intercepts all metadata payloads before they are passed to the underlying Winston logger.
+- It scans object keys for sensitive terms like `authorization`, `password`, `token`, `secret`, and `cookie`.
+- If a match is found (case-insensitively), the value is mutated to `[REDACTED]`.
+This proactive redaction prevents accidental logging of Personally Identifiable Information (PII) or security credentials, ensuring compliance with data privacy regulations like GDPR and SOC2.
+
+**Graceful Shutdown and Log Flushing**
+In highly concurrent Node.js applications, asynchronous logs can be lost if the process exits abruptly. The module exports a `flushLogs()` Promise that binds to Winston's `finish` event.
+Furthermore, the module actively listens to system signals:
+- `process.on('SIGINT')`
+- `process.on('SIGTERM')`
+Upon receiving a termination signal, the logger intercepts the exit sequence, outputs a final log indicating shutdown, awaits the `flushLogs()` promise, and only then executes `process.exit(0)`. This guarantees zero log loss during container scaling down or rolling updates. (Note: It conditionally skips this behavior if `NODE_ENV === 'test'` to prevent hanging unit test runners).
+
+---
+
+## 6. Module Specifications: Core Domain Logic
+
+### 6.1. Directory Overview: `core`
+
+The `core` directory is the heart of the application. Following Domain-Driven Design (DDD) principles, this layer is entirely isolated from external dependencies. It knows nothing about HTTP, Express, routing, or logging. It strictly contains pure business logic. Because it has zero external dependencies, it is highly testable and can be ported to other environments (e.g., CLI tools or WebSocket servers) without modification.
+
+### 6.2. File: `calculator.js`
+
+**Responsibility and Precision Engineering**
+The `calculator.js` module serves as the high-precision computational engine of the microservice. In standard JavaScript, numbers are represented as double-precision 64-bit floats (IEEE 754), which notoriously leads to precision loss when dealing with very large integers or precise decimal mathematics (e.g., `9007199254740992 + 1 = 9007199254740992`). 
+
+To entirely eliminate this architectural flaw, the application relies exclusively on the native `BigInt` data type for all internal arithmetic operations. The module intercepts incoming generic values (strings, numbers, or bigints) and safely normalizes them via the internal `toBigInt(value)` utility function.
+
+**Return Type Contract: `CalcResult`**
+Instead of throwing exceptions when encountering business logic violations (like division by zero), which can be computationally expensive and difficult to track across call stacks, the engine employs a strict functional return type defined via JSDoc typedefs:
+```javascript
+/**
+ * @typedef {Object} CalcResult
+ * @property {boolean} success
+ * @property {bigint|null} result
+ * @property {'DIVISION_BY_ZERO'|'INVALID_INPUT'|'OVERFLOW'|'COMPUTATION_ERROR'|null} error
+ */
+```
+This pattern (similar to Go's multiple return values or Rust's `Result` enum) forces the consumer of the core module to explicitly handle success and failure branches, making the system vastly more predictable.
+
+**Supported Operations and Algorithmic Design**
+1. **Addition (`add`) & Subtraction (`subtract`)**: Direct `BigInt` calculations. Safely rejects un-parseable inputs with an `INVALID_INPUT` error.
+2. **Multiplication (`multiply`)**: Safe `BigInt` multiplication.
+3. **Division (`divide`)**: Uses truncation-based integer division. Implements a strict mathematical guard against dividing by `ZERO`, returning a `DIVISION_BY_ZERO` error payload rather than crashing the Node process.
+4. **Exponentiation (`power`)**: Implements highly optimized *Exponentiation by Squaring* algorithm. This drastically reduces the time complexity of large power calculations from O(n) to O(log n), preventing CPU thread blocking. Rejects negative exponents since `BigInt` does not support fractions.
+5. **Square Root (`sqrt`)**: JavaScript's native `Math.sqrt` cannot be used with `BigInt`, and casting to float would lose precision. Therefore, this module implements the *Babylonian Method* (Hero's method) natively using `BigInt` arithmetic. It iteratively converges on the exact integer square root. Rejects negative numbers to avoid complex number calculations.
+6. **Modulo (`modulo`)**: Native `BigInt` remainder calculation, again guarded against division by zero.
+
+This core file represents a robust, mathematically sound domain layer designed for stability and absolute precision.
+
+---
+
+## 7. Module Specifications: Middleware
+
+### 7.1. Directory Overview: `middleware`
+
+The `middleware` directory acts as the defensive perimeter for the application. In the Express.js ecosystem, middleware functions have access to the request object (`req`), the response object (`res`), and the next middleware function in the application’s request-response cycle. This layer is responsible for intercepting all incoming traffic, sanitizing it, validating it against strict schemas, and ensuring that the core domain is completely shielded from malformed or malicious HTTP payloads.
+
+### 7.2. File: `validator.js`
+
+**Responsibility and Security Focus**
+The `validator.js` file is the primary security checkpoint for the `/calculate` endpoint. Its architecture is explicitly designed to implement a Zero-Trust approach to client input. It handles schema validation, data type normalization, and active threat mitigation (specifically targeting Prototype Pollution).
+
+**Prototype Pollution Prevention**
+Before any standard validation occurs, the middleware aggressively scans the incoming request body keys. It explicitly checks for dangerous keys: `__proto__`, `constructor`, and `prototype`. If any of these are detected, it immediately throws a synchronous error, halting execution and responding with a generic `400 Bad Request`. This preemptive strike ensures that deep property injection attacks, which are notoriously dangerous in the JavaScript ecosystem, cannot compromise the Node.js runtime.
+
+**Schema Validation via Joi**
+The middleware employs the `joi` library to enforce a strict, immutable schema on the request payload. The schema configuration includes:
+- **`operation`**: Must be exactly one of the supported strings (`add`, `subtract`, `multiply`, `divide`, `exponentiation`, `sqrt`, `modulo`).
+- **`operand1` & `operand2`**: These are complex fields. Because JSON does not natively support `BigInt`, large numbers are often passed as strings to prevent floating-point rounding by JSON parsers. The schema uses `Joi.alternatives()` to accept either strings matching a strict regex (`/^-?\d+$/` - integers only, no decimals) or native JSON integers.
+- **`.unknown(false)`**: Strips and rejects any undocumented properties sent in the payload.
+
+**Custom BigInt Normalization**
+A custom Joi extension (`bigIntValidator`) is attached to the operand fields. It securely attempts to cast the validated string or number into a native JavaScript `BigInt` using a try-catch block. If successful, the parsed `BigInt` replaces the original string value.
+
+**State Passing Pattern**
+Instead of mutating the original `req.body`, which is an anti-pattern that can cause side-effects in downstream middleware, the validator constructs a highly sanitized object and attaches it to a new property: `req.validatedBody`. The downstream controllers in the presentation layer are strictly instructed to read from `req.validatedBody` rather than `req.body`, guaranteeing they only process safe, validated, and normalized data.
+
+**Structured Error Responses**
+If validation fails, the middleware automatically intercepts the Joi error map, restructures it into a standard JSON API error format detailing exactly which fields failed, logs a `warn` entry using the centralized logger (including the `x-correlation-id` for request tracing), and returns a HTTP `400` status code. This prevents standard Express HTML stack traces from leaking to the client.
+
+---
+
+## 8. Module Specifications: Presentation Layer (API)
+
+### 8.1. Directory Overview: `api/v1_rest_interface`
+
+The `api` directory represents the external presentation layer of the microservice. It exposes the underlying domain logic via an HTTP REST interface. The sub-directory `v1_rest_interface` indicates a strict API versioning strategy. Future iterations (e.g., `v2` using GraphQL or gRPC) can be added as adjacent directories without breaking the existing `v1` contract.
+
+### 8.2. File: `routes/routes.js`
+
+**Responsibility and Middleware Chaining**
+This file acts as the primary traffic controller for the `v1` API. It utilizes `express.Router()` to define isolated route handlers.
+- **Correlation ID Injection**: It implements a `correlationMiddleware` that inspects incoming headers for `x-correlation-id`. If missing, it generates a UUIDv4. This ID is attached to the request, response headers, and all subsequent logs, enabling distributed tracing across microservices.
+- **Payload Parsing**: Uses `express.json({ limit: '10kb' })` to parse incoming JSON. The strict `10kb` limit is an intentional security measure to prevent Denial of Service (DoS) via massive payload parsing.
+- **Route Definitions**: Exposes `POST /calculate` (the primary business endpoint) and `GET /health` (a liveness probe for Kubernetes/Docker Swarm to verify container health).
+
+### 8.3. File: `controllers/controller.js`
+
+**Responsibility and Domain Orchestration**
+The controller bridges the gap between the HTTP transport layer and the pure domain logic (`core/calculator.js`).
+- **Performance Profiling**: Utilizes Node's native `perf_hooks` (`performance.now()`) to track the exact millisecond duration of every calculation. This metric is injected into the logger for APM (Application Performance Monitoring) purposes.
+- **Direct Invocation Mapping**: To prevent dynamic execution vulnerabilities, the controller uses a strict `switch(operation)` statement to manually map the requested operation to the precise engine function.
+- **Error Translation**: Implements `getHttpStatusCode()`. Pure domain errors (like `DIVISION_BY_ZERO` or `INVALID_INPUT`) are cleanly mapped to HTTP `422 Unprocessable Entity` rather than generic `500` or `400` codes, semantically indicating that the payload was syntactically correct but semantically invalid.
+- **Serialization**: Because `JSON.stringify` natively throws an error when encountering a `BigInt` (as per the ECMAScript spec), the controller safely calls `.toString()` on the `BigInt` result payload before constructing the JSON response. This ensures astronomical numbers are transmitted safely to clients as strings without float truncation.
+
+### 8.4. File: `middleware/error-handler.js`
+
+**Responsibility and Global Exception Handling**
+This module is registered as the final middleware in the Express application stack. It serves as a catch-all for any asynchronous or synchronous exceptions that escape the route handlers.
+- **Security Sanitization**: It detects if the application is running in `production` mode (via `config.NODE_ENV`). If so, it actively strips error `.stack` traces and raw error messages from `500` level errors, replacing them with generic text (`"An internal server error occurred"`). This prevents source code layout or database structure leaks.
+- **Severity-Based Logging**: Errors are inspected dynamically. `5xx` internal errors trigger a Winston `error` log (which could trigger PagerDuty alerts in a real deployment). `4xx` business logic errors trigger a `warn` log, indicating a client misbehavior rather than a system failure.
+- **Serialization Safety**: Wraps the final `res.json()` call in a `try-catch` block. If the error object itself is un-serializable (e.g., due to circular references), it falls back to a hardcoded string response (`res.send()`), guaranteeing that the HTTP connection never hangs indefinitely.
+
+---
+
+## 9. Module Specifications: Application Root Orchestrator
+
+### 9.1. File: `index.js`
+
+**Responsibility and Server Lifecycle**
+The `index.js` file located at the base path of the project serves as the ultimate conductor. It instantiates the Express server and binds all modularized components (security headers, routes, error handling, logging) into a single functional pipeline.
+
+- **Security Hardening**: It imports and binds `helmet()`, automatically equipping the Express response with 11 crucial HTTP security headers to prevent Cross-Site Scripting (XSS) and clickjacking.
+- **Graceful Shutdown Engineering**: It attaches listeners to `process.on('SIGINT')` and `SIGTERM`. Rather than letting a container orchestrator violently kill active calculation requests, the root script triggers a controlled shutdown sequence. It stops the server from accepting new TCP connections (`server.close()`), waits for existing responses to finish, flushes the Winston asynchronous log buffer, and exits safely. A 10-second `setTimeout` acts as a failsafe to forcefully kill the process if connections hang.
+- **Panic Handlers**: Explicit hooks for `uncaughtException` and `unhandledRejection` are registered. Instead of ignoring unhandled promises which can leave Node.js in a memory-leaking zombie state, the system logs the panic via Winston and forcefully executes `process.exit(1)`, trusting the external orchestrator (like Kubernetes) to restart the pod from a clean slate.
+
+---
+
+## 10. Deep Dive: Testing Architecture and Quality Assurance
+
+The testing framework and methodology in the Calculator Microservice are designed to ensure absolute functional correctness, mathematical integrity, and systemic resilience. Instead of relying on a myriad of heavy, external testing frameworks that can slow down continuous integration pipelines, this project utilizes the native `node:test` runner and `node:assert/strict`.
+
+### 10.1. Core Domain Testing (`core.calculator.test.js`)
+The unit tests surrounding the core mathematical engine are exhaustive. They validate not just the mathematical accuracy but the deterministic functional return contracts.
+
+- **String and Number Normalization Verification**: The test suite actively injects a combination of strings (`'5'`, `'10'`) and numbers (`5`, `10`). It expects the engine to perfectly normalizes both into native BigInts (`15n`). This confirms that JSON deserialization issues (where big numbers often arrive as strings) are gracefully handled.
+- **Fail-Fast Arithmetic Integrity**: Instead of crashing the Node.js V8 runtime engine, operations like division by zero (`divide(10, 0)`) or taking the square root of a negative integer (`sqrt(-1)`) are verified to return precisely structured `CalcResult` objects (e.g., `{ success: false, result: null, error: 'DIVISION_BY_ZERO' }`). The tests assert deeply that the `error` string literal matches the API contract expected by the `controller.js`.
+- **Exponentiation Edge Cases**: Exponentiation is tested for negative exponents (`power(2, -3)`), which correctly yields an `INVALID_INPUT` error, preventing the application from attempting fractional Math which is unsupported by the `BigInt` engine. Zero-exponent testing ensures standard mathematical laws apply (`power(5, 0) => 1n`).
+- **Integer Truncation Rules**: When testing division (`divide(10, 3)`), the strict test runner ensures the result is precisely `3n`, enforcing that floating-point decimals are completely omitted without causing catastrophic float inaccuracies. The Babylonian Integer Square Root function (`sqrt(26)`) is similarly verified to accurately snap to the closest whole integer (`5n`).
+
+### 10.2. Express API & Integration Testing (`app.test.js` & `controller.test.js`)
+At the integration tier, the testing focuses heavily on the HTTP boundary. Using the `supertest` library (a lightweight HTTP abstraction layer), the test suite spins up the Express server dynamically on an ephemeral port.
+- **Header Parsing Validation**: Ensures the `x-correlation-id` header is injected appropriately into incoming and outgoing requests.
+- **Response Serialization Guarantees**: Asserts that successful calculations serialize BigInts back to standard JSON strings securely (since `BigInt` directly embedded into a raw `JSON.stringify` throws an ECMAScript specification error).
+- **Graceful Error Translation**: Confirms that when the mock engine returns a `DIVISION_BY_ZERO`, the HTTP status sent over the wire is explicitly `422 Unprocessable Entity` rather than a blanket `500 Server Error`.
+
+### 10.3. Security & Middleware Testing (`validator.test.js`)
+Middleware testing acts as the security audit phase of the codebase. The application leverages `Joi` schema matching to prevent deep-object manipulation.
+- **Prototype Pollution Auditing**: Deeply nested testing payloads intentionally attempt to inject `__proto__` or `constructor` objects into the parsed JSON. The unit tests rigorously confirm that the `validator.js` layer drops these requests instantaneously and emits a critical error log before the controller is ever invoked.
+- **Input Type Enforcement**: Test cases strictly verify that providing un-parseable JSON types (e.g., arrays or nested objects when a numeric string is expected) correctly halts the request pipeline.
+
+## 11. Security Specifications & Attack Mitigations
+
+Building an enterprise application requires more than just mathematically correct business logic; it requires an active defense strategy against common Web Application exploits (OWASP Top 10). The architecture handles several major vectors.
+
+### 11.1. Injection and Code Execution Resilience
+Because the presentation layer utilizes an explicit switch statement mapping (e.g., `switch (operation) { case 'add': ... }`), the application is completely immune to arbitrary code execution or reflective injection attacks. At no point is the user's `operation` string dynamically bound to an object method or function execution (`mathEngine[operation]()` is explicitly avoided to prevent malicious method overriding).
+
+### 11.2. Denial of Service (DoS) and Payload Exhaustion
+Denial of service via massive JSON payloads is natively thwarted. The Express framework configuration within `index.js` restricts the incoming JSON body parser to `10kb` (`express.json({ limit: '10kb' })`). An attempt to upload a megabyte of malformed JSON strings to exhaust the V8 garbage collector will be immediately rejected with a `413 Payload Too Large` error at the transport layer.
+Furthermore, the use of Exponentiation by Squaring for powers massively reduces CPU cycle consumption, mitigating algorithmic complexity attacks where a user requests massive power iterations which in a naive loop would block the single-threaded Node.js event loop for seconds.
+
+### 11.3. Distributed Tracing & Observability
+A robust logging system is intrinsically linked to application security. Without logs, auditing the system post-incident is impossible. 
+The application forces a correlation identifier upon every request, tying the entry point (router) through the middleware validation phase, into the controller orchestration, and finally through the error handlers. The Winston-powered `logger.js` formats all this metadata in deterministic JSON, making it readily ingestible by tools like Elasticsearch, Datadog, or Splunk. Most crucially, the logger sanitizes variables, proactively scrubbing `authorization` or `token` strings before they are persisted to standard output.
+
+
+================================================================================
+Folder: config_and_dependencies
+================================================================================
+
+------------------------------------------------------------
+File: package.json
+------------------------------------------------------------
+{"type": "module"}
+
+
+------------------------------------------------------------
+File: config.js
+------------------------------------------------------------
+/**
+ * @file config.js
+ * @description Centralized configuration loader for the microservice.
+ * Enforces strict validation of environment variables via Joi to guarantee
+ * runtime safety and fail-fast behavior during startup.
+ */
+
+import 'dotenv/config';
+import Joi from 'joi';
+
+/**
+ * Configuration schema definition.
+ * 
+ * - PORT: Integer between 1024 and 65535, required for service binding.
+ * - LOG_LEVEL: Enumerated string, controls verbosity of the application logs.
+ * - NODE_ENV: Environment indicator, restricts runtime behavior profiles.
+ * - API_TIMEOUT_MS: Positive integer, defines latency thresholds for circuit breakers.
+ */
+const schema = Joi.object({
+  PORT: Joi.number()
+    .integer()
+    .min(1024)
+    .max(65535)
+    .required(),
+  LOG_LEVEL: Joi.string()
+    .valid('debug', 'info', 'warn', 'error')
+    .required(),
+  NODE_ENV: Joi.string()
+    .valid('development', 'staging', 'production', 'test')
+    .required(),
+  API_TIMEOUT_MS: Joi.number()
+    .integer()
+    .positive()
+    .required(),
+  WORKER_MIN_THREADS: Joi.number()
+    .integer()
+    .min(1)
+    .required(),
+  WORKER_MAX_THREADS: Joi.number()
+    .integer()
+    .min(1)
+    .required(),
+});
+
+/**
+ * Validates environment variables and freezes the resulting configuration object.
+ * 
+ * @throws {Error} Throws error on validation failure.
+ * @returns {Readonly<Object>} The frozen configuration object.
+ */
+export const validateConfig = () => {
+  const { error, value } = schema.validate({
+    PORT: process.env.PORT,
+    LOG_LEVEL: process.env.LOG_LEVEL,
+    NODE_ENV: process.env.NODE_ENV,
+    API_TIMEOUT_MS: process.env.API_TIMEOUT_MS,
+    WORKER_MIN_THREADS: process.env.WORKER_MIN_THREADS,
+    WORKER_MAX_THREADS: process.env.WORKER_MAX_THREADS,
+  }, { abortEarly: false });
+
+  if (error) {
+    console.error('CRITICAL: Configuration Validation Failed.');
+    error.details.forEach((detail) => {
+      console.error(`- Validation Error: ${detail.message}`);
+    });
+    throw new Error('CRITICAL: Configuration Validation Failed.');
+  }
+
+  // Freeze object to ensure immutability during application lifecycle.
+  return Object.freeze({
+    PORT: parseInt(value.PORT, 10),
+    LOG_LEVEL: value.LOG_LEVEL,
+    NODE_ENV: value.NODE_ENV,
+    API_TIMEOUT_MS: parseInt(value.API_TIMEOUT_MS, 10),
+    WORKER_MIN_THREADS: parseInt(value.WORKER_MIN_THREADS, 10),
+    WORKER_MAX_THREADS: parseInt(value.WORKER_MAX_THREADS, 10),
+  });
+};
+
+/**
+ * Finalized, immutable configuration object exported for the application.
+ */
+let config;
+try {
+  config = validateConfig();
+} catch (e) {
+  // Exit with status code 1 to signal orchestration layers (K8s/Docker) to restart.
+  process.exit(1);
+}
+
+export default config;
+
+
+================================================================================
+Folder: infrastructure
+================================================================================
+
+------------------------------------------------------------
+File: math-worker.js
+------------------------------------------------------------
+import * as mathEngine from '../core/calculator.js';
+
+/**
+ * Worker function to execute CPU-bound mathematical operations.
+ * Designed for use with Piscina worker pool to prevent main-thread blocking.
+ */
+export default (task) => {
+  const { operation, operand1, operand2 } = task;
+  let result;
+
+  try {
+    switch (operation) {
+      case 'add':
+        result = mathEngine.add(operand1, operand2);
+        break;
+      case 'subtract':
+        result = mathEngine.subtract(operand1, operand2);
+        break;
+      case 'multiply':
+        result = mathEngine.multiply(operand1, operand2);
+        break;
+      case 'divide':
+        result = mathEngine.divide(operand1, operand2);
+        break;
+      case 'exponentiation':
+        result = mathEngine.power(operand1, operand2);
+        break;
+      case 'sqrt':
+        result = mathEngine.sqrt(operand1);
+        break;
+      case 'modulo':
+        result = mathEngine.modulo(operand1, operand2);
+        break;
+      default:
+        result = { success: false, error: 'INVALID_OPERATION' };
+    }
+    return result;
+  } catch (err) {
+    return {
+      success: false,
+      error: 'COMPUTATION_ERROR',
+      message: err.message
+    };
+  }
+};
+
+
+------------------------------------------------------------
+File: logger.js
+------------------------------------------------------------
+import winston from 'winston';
+import fs from 'fs';
+import config from '../config_and_dependencies/config.js';
+
+/**
+ * Logger Configuration for the Calculator Application.
+ * Utilizes winston for high-performance, asynchronous JSON logging.
+ * Configured for stdout (containerized environments) and supports
+ * dynamic log levels via environment variables.
+ */
+
+const logger = winston.createLogger({
+  level: config.LOG_LEVEL || 'info',
+  format: winston.format.combine(
+    winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
+    winston.format.errors({ stack: true }),
+    winston.format.json()
+  ),
+  defaultMeta: { service: 'calculator-app' },
+  transports: [
+    new winston.transports.Console({
+      handleExceptions: true,
+    }),
+  ],
+  exitOnError: false,
+});
+
+/**
+ * Sanitizes potentially sensitive data from log payloads.
+ * Removes known sensitive keys (e.g., authorization, password).
+ */
+/**
+ * Sanitizes potentially sensitive data from log payloads recursively.
+ * Implements granular circular reference detection and depth limiting.
+ */
+export const sanitizeData = (data, stack = new Set(), depth = 0) => {
+  // Guard against extreme recursion depth or non-object types
+  if (!data || typeof data !== 'object' || depth > 10) return data;
+
+  // Handle Circular References (Ancestor detection)
+  if (stack.has(data)) return '[Circular]';
+  stack.add(data);
+
+  const sensitiveKeys = ['authorization', 'password', 'token', 'secret', 'cookie', 'apikey'];
+
+  // Handle Arrays
+  if (Array.isArray(data)) {
+    const result = data.map((item) => sanitizeData(item, stack, depth + 1));
+    stack.delete(data);
+    return result;
+  }
+
+  // Handle Error Objects specifically to capture non-enumerable properties
+  const base = data instanceof Error ? {
+    message: data.message,
+    stack: data.stack,
+    ...data
+  } : { ...data };
+
+  const sanitized = {};
+  Object.keys(base).forEach((key) => {
+    const value = base[key];
+    if (sensitiveKeys.includes(key.toLowerCase())) {
+      sanitized[key] = '[REDACTED]';
+    } else if (value && typeof value === 'object') {
+      sanitized[key] = sanitizeData(value, stack, depth + 1);
+    } else {
+      sanitized[key] = value;
+    }
+  });
+
+  stack.delete(data);
+  return sanitized;
+};
+
+/**
+ * Enhanced logging methods with automated sanitization.
+ */
+const customLogger = {
+  info: (message, meta) => logger.info(message, sanitizeData(meta)),
+  error: (message, meta) => logger.error(message, sanitizeData(meta)),
+  warn: (message, meta) => logger.warn(message, sanitizeData(meta)),
+  debug: (message, meta) => logger.debug(message, sanitizeData(meta)),
+};
+
+/**
+ * Graceful shutdown handler to ensure all logs are flushed before exit.
+ * Includes a safety timeout to prevent zombie processes if streams are blocked.
+ */
+export const flushLogs = () => {
+  const finishPromise = new Promise((resolve) => {
+    // If the logger is already closed, resolve immediately
+    if (logger.transports.every(t => t._writableState && t._writableState.ended)) {
+      return resolve();
+    }
+    logger.on('finish', resolve);
+    logger.end();
+  });
+
+  const timeoutPromise = new Promise((resolve) => setTimeout(resolve, 2000));
+
+  return Promise.race([finishPromise, timeoutPromise]);
+};
+
+/**
+ * Panic log function as a last-resort for fatal crashes.
+ * Uses synchronous fs.writeSync to FD 1 (stdout) to guarantee output
+ * even if the event loop or Winston is compromised.
+ */
+export const panic = (message, err) => {
+  const fatalLog = {
+    level: 'fatal',
+    message: `PANIC: ${message}`,
+    error: err instanceof Error ? { message: err.message, stack: err.stack } : err,
+    timestamp: new Date().toISOString()
+  };
+  try {
+    fs.writeSync(1, `${JSON.stringify(fatalLog)}\n`);
+  } catch (writeErr) {
+    console.error('Even PANIC logging failed:', writeErr);
+  }
+};
+
+export default customLogger;
+
+
+================================================================================
+Folder: middleware
+================================================================================
+
+------------------------------------------------------------
+File: validator.js
+------------------------------------------------------------
+/**
+ * @file validator.js
+ * @description Security middleware for request body validation and sanitization.
+ * Enforces strict Joi schemas for calculator operations, preventing prototype pollution,
+ * and normalizing numerical inputs to BigInt.
+ */
+
+import Joi from 'joi';
+import logger from '../infrastructure/logger.js';
+
+/**
+ * Validates that a string can be safely represented as a BigInt.
+ * @param {string|number} value - The input value to check.
+ * @returns {bigint} - The converted BigInt.
+ * @throws {Error} - If value cannot be converted to BigInt.
+ */
+const bigIntValidator = (value, helpers) => {
+  try {
+    return BigInt(value);
+  } catch (err) {
+    return helpers.error('any.invalid');
+  }
+};
+
+/**
+ * Strict validation schema for the /calculate endpoint.
+ * - Restricts keys to allowed operation parameters.
+ * - Validates numerical strings as BigInt.
+ * - Prevents prototype pollution by strict key enforcement.
+ */
+const schema = Joi.object({
+  operation: Joi.string()
+    .valid('add', 'subtract', 'multiply', 'divide', 'exponentiation', 'sqrt', 'modulo')
+    .required(),
+  operand1: Joi.alternatives()
+    .try(Joi.string().regex(/^-?\d+$/).max(250), Joi.number().integer())
+    .custom(bigIntValidator)
+    .required(),
+  operand2: Joi.alternatives()
+    .try(Joi.string().regex(/^-?\d+$/).max(250), Joi.number().integer())
+    .custom(bigIntValidator)
+    .custom((value, helpers) => {
+      const { operation } = helpers.state.ancestors[0];
+      if (operation === 'exponentiation' && BigInt(value) > 100000n) {
+        return helpers.error('any.invalid', { message: 'Exponent exceeds mathematical safety boundary (100,000)' });
+      }
+      return value;
+    })
+    .when('operation', {
+      is: Joi.valid('sqrt'),
+      then: Joi.forbidden(),
+      otherwise: Joi.required(),
+    }),
+}).unknown(false);
+
+/**
+ * Middleware to validate incoming request bodies.
+ * 
+ * @param {import('express').Request} req - Express request object.
+ * @param {import('express').Response} res - Express response object.
+ * @param {import('express').NextFunction} next - Express next middleware function.
+ * @returns {Promise<void>}
+ */
+export const validateCalculateRequest = async (req, res, next) => {
+  const correlationId = req.headers['x-correlation-id'] || 'n/a';
+
+  try {
+    // 1. Check for Prototype Pollution attempts (Recursive Deep-Property & Circular-Safe)
+    const deepCheck = (obj, seen = new WeakSet()) => {
+      if (!obj || typeof obj !== 'object') return false;
+      if (seen.has(obj)) return false;
+      seen.add(obj);
+
+      const forbiddenKeys = ['__proto__', 'constructor', 'prototype'];
+      // Use Reflect.ownKeys to catch non-enumerable properties like __proto__
+      const keys = Reflect.ownKeys(obj);
+      if (keys.some(key => forbiddenKeys.includes(key))) return true;
+      return keys.some(key => typeof obj[key] === 'object' && deepCheck(obj[key], seen));
+    };
+
+    if (deepCheck(req.body)) {
+      throw new Error('Forbidden property access detected');
+    }
+
+    // 2. Perform Schema Validation
+    const { error, value } = schema.validate(req.body, {
+      abortEarly: false,
+      stripUnknown: true,
+    });
+
+    if (error) {
+      const details = error.details.map((d) => ({
+        field: d.path[0],
+        message: d.message,
+      }));
+
+      logger.warn('Validation failed', {
+        correlationId,
+        details,
+      });
+
+      return res.status(400).json({
+        status: 'error',
+        code: 'VALIDATION_ERROR',
+        message: 'Invalid request body',
+        details,
+      });
+    }
+
+    // 3. Normalize values and attach to req for downstream use
+    req.validatedBody = {
+      operation: value.operation,
+      operand1: value.operand1,
+      operand2: value.operand2,
+    };
+
+    next();
+  } catch (err) {
+    logger.error('Critical validation error', {
+      correlationId,
+      error: err.message,
+    });
+
+    res.status(400).json({
+      status: 'error',
+      code: 'INVALID_INPUT',
+      message: 'Malformed input',
+    });
+  }
+};
+
+
+================================================================================
+Folder: core
+================================================================================
+
+------------------------------------------------------------
+File: calculator.js
+------------------------------------------------------------
+/**
+ * @fileoverview High-precision computational engine using BigInt for robust arithmetic.
+ */
+
+const ZERO = 0n;
+const ONE = 1n;
+
+/**
+ * @typedef {Object} CalcResult
+ * @property {boolean} success
+ * @property {bigint|null} result
+ * @property {'DIVISION_BY_ZERO'|'INVALID_INPUT'|'OVERFLOW'|'COMPUTATION_ERROR'|null} error
+ */
+
+/**
+ * Validates if the input can be treated as a BigInt.
+ * @param {any} value
+ * @returns {bigint|null}
+ */
+function toBigInt(value) {
+  try {
+    if (typeof value === 'bigint') return value;
+    if (typeof value === 'string' || typeof value === 'number') {
+      return BigInt(value);
+    }
+  } catch (e) {
+    return null;
+  }
+  return null;
+}
+
+/**
+ * Adds two numbers.
+ * @param {bigint|string|number} a
+ * @param {bigint|string|number} b
+ * @returns {CalcResult}
+ */
+export function add(a, b) {
+  const va = toBigInt(a);
+  const vb = toBigInt(b);
+  if (va === null || vb === null) return { success: false, result: null, error: 'INVALID_INPUT' };
+  return { success: true, result: va + vb, error: null };
+}
+
+/**
+ * Subtracts b from a.
+ * @param {bigint|string|number} a
+ * @param {bigint|string|number} b
+ * @returns {CalcResult}
+ */
+export function subtract(a, b) {
+  const va = toBigInt(a);
+  const vb = toBigInt(b);
+  if (va === null || vb === null) return { success: false, result: null, error: 'INVALID_INPUT' };
+  return { success: true, result: va - vb, error: null };
+}
+
+/**
+ * Multiplies two numbers.
+ * @param {bigint|string|number} a
+ * @param {bigint|string|number} b
+ * @returns {CalcResult}
+ */
+export function multiply(a, b) {
+  const va = toBigInt(a);
+  const vb = toBigInt(b);
+  if (va === null || vb === null) return { success: false, result: null, error: 'INVALID_INPUT' };
+  return { success: true, result: va * vb, error: null };
+}
+
+/**
+ * Divides a by b using truncation.
+ * @param {bigint|string|number} a
+ * @param {bigint|string|number} b
+ * @returns {CalcResult}
+ */
+export function divide(a, b) {
+  const va = toBigInt(a);
+  const vb = toBigInt(b);
+  if (va === null || vb === null) return { success: false, result: null, error: 'INVALID_INPUT' };
+  if (vb === ZERO) return { success: false, result: null, error: 'DIVISION_BY_ZERO' };
+  return { success: true, result: va / vb, error: null };
+}
+
+/**
+ * Exponentiation by squaring.
+ * @param {bigint|string|number} base
+ * @param {bigint|string|number} exponent
+ * @returns {CalcResult}
+ */
+export function power(base, exponent) {
+  let b = toBigInt(base);
+  let e = toBigInt(exponent);
+  if (b === null || e === null || e < ZERO) return { success: false, result: null, error: 'INVALID_INPUT' };
+  
+  let res = ONE;
+  while (e > ZERO) {
+    if (e % 2n === ONE) res *= b;
+    b *= b;
+    e /= 2n;
+  }
+  return { success: true, result: res, error: null };
+}
+
+/**
+ * Integer Square root using Babylonian method.
+ * @param {bigint|string|number} value
+ * @returns {CalcResult}
+ */
+export function sqrt(value) {
+  const v = toBigInt(value);
+  if (v === null || v < ZERO) return { success: false, result: null, error: 'INVALID_INPUT' };
+  if (v === ZERO) return { success: true, result: ZERO, error: null };
+  
+  // Optimization: Start with an initial guess based on bit-length.
+  // We use bitwise shifts to calculate bitLength to avoid the O(N^2) overhead 
+  // of converting a massive BigInt to a string.
+  let bitLength = 0;
+  let temp = v;
+  while (temp > 0n) {
+    temp >>= 64n;
+    bitLength += 64;
+  }
+  let x = ONE << BigInt(Math.ceil(bitLength / 2));
+  
+  let y = (x + v / x) >> 1n;
+  while (y < x) {
+    x = y;
+    y = (x + v / x) >> 1n;
+  }
+  return { success: true, result: x, error: null };
+}
+
+/**
+ * Modulo operation.
+ * @param {bigint|string|number} a
+ * @param {bigint|string|number} b
+ * @returns {CalcResult}
+ */
+export function modulo(a, b) {
+  const va = toBigInt(a);
+  const vb = toBigInt(b);
+  if (va === null || vb === null) return { success: false, result: null, error: 'INVALID_INPUT' };
+  if (vb === ZERO) return { success: false, result: null, error: 'DIVISION_BY_ZERO' };
+  return { success: true, result: va % vb, error: null };
+}
+
+
+================================================================================
+Folder: api
+================================================================================
+
+================================================================================
+Folder: api/v1_rest_interface
+================================================================================
+
+================================================================================
+Folder: api/v1_rest_interface/routes
+================================================================================
+
+------------------------------------------------------------
+File: routes.js
+------------------------------------------------------------
+/**
+ * @file routes.js
+ * @description RESTful routing interface for the Calculator microservice.
+ * Defines the /calculate endpoint with strict validation, correlation ID propagation,
+ * and asynchronous controller binding.
+ */
+
+import express from 'express';
+import { validateCalculateRequest } from '../../../middleware/validator.js';
+import { calculate } from '../controllers/controller.js';
+import { v4 as uuidv4 } from 'uuid';
+
+const router = express.Router();
+
+/**
+ * Middleware for Correlation ID instrumentation.
+ * Ensures every incoming request has a unique identifier for distributed tracing.
+ * 
+ * @param {import('express').Request} req - Express request object.
+ * @param {import('express').Response} res - Express response object.
+ * @param {import('express').NextFunction} next - Express next middleware function.
+ */
+const correlationMiddleware = (req, res, next) => {
+  const correlationId = req.headers['x-correlation-id'] || uuidv4();
+  req.headers['x-correlation-id'] = correlationId;
+  res.setHeader('x-correlation-id', correlationId);
+  next();
+};
+
+/**
+ * @route POST /calculate
+ * @description Performs mathematical operations based on the provided payload.
+ * 
+ * Middleware Sequence:
+ * 1. correlationMiddleware: Injects/Propagates correlation ID.
+ * 2. express.json(): Parses request body.
+ * 3. validateCalculateRequest: Validates payload against Joi schema and strips unknown keys.
+ * 4. calculate: Executes the requested math operation via the arithmetic engine.
+ */
+router.post(
+  '/calculate',
+  correlationMiddleware,
+  express.json({ limit: '10kb' }),
+  validateCalculateRequest,
+  calculate
+);
+
+/**
+ * Health check endpoint for container orchestrators.
+ */
+router.get('/health', (req, res) => {
+  res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+export default router;
+
+
+================================================================================
+Folder: api/v1_rest_interface/controllers
+================================================================================
+
+------------------------------------------------------------
+File: controller.js
+------------------------------------------------------------
+import Piscina from 'piscina';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import logger from '../../../infrastructure/logger.js';
+import config from '../../../config_and_dependencies/config.js';
+import { performance } from 'perf_hooks';
+import * as mathEngine from '../../../core/calculator.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const WORKER_PATH = path.resolve(__dirname, '../../../infrastructure/math-worker.js');
+
+// Initialize Worker Pool with bound resource limits
+const workerPool = new Piscina({
+  filename: WORKER_PATH,
+  minThreads: config.WORKER_MIN_THREADS,
+  maxThreads: config.WORKER_MAX_THREADS,
+  idleTimeout: 30000,
+  maxQueueSize: 100,
+});
+
+/**
+ * Executes math operations with a hard timeout using the worker pool.
+ */
+const executeWithPool = async (task) => {
+  try {
+    // AbortController for granular timeout control
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), config.API_TIMEOUT_MS);
+
+    const result = await workerPool.run(task, { signal: controller.signal });
+    clearTimeout(timeout);
+    return result;
+  } catch (err) {
+    if (err.name === 'AbortError' || err.message.includes('Task timed out')) {
+      throw new Error('COMPUTATION_TIMEOUT');
+    }
+    throw err;
+  }
+};
+
+/**
+ * Maps domain-specific errors to HTTP status codes.
+ */
+const getHttpStatusCode = (errorType) => {
+  switch (errorType) {
+    case 'DIVISION_BY_ZERO':
+    case 'INVALID_INPUT':
+    case 'OVERFLOW':
+    case 'COMPUTATION_TIMEOUT':
+      return 422;
+    default:
+      return 500;
+  }
+};
+
+/**
+ * Handles incoming calculation requests.
+ */
+export const calculate = async (req, res) => {
+  const correlationId = req.headers['x-correlation-id'] || 'n/a';
+  const startTime = performance.now();
+
+  try {
+    const { operation, operand1, operand2 } = req.validatedBody;
+    
+    // Heuristic: Execute simple/small operations synchronously to avoid IPC overhead.
+    // Structural cloning into workers is more expensive than O(1) BigInt addition.
+    const isSimpleOp = ['add', 'subtract', 'multiply'].includes(operation);
+    
+    // Efficient bit-length estimation to avoid O(N^2) toString() overhead
+    const getEstimateDigits = (v) => {
+      let bits = 0;
+      let t = v < 0n ? -v : v;
+      while (t > 0n) { t >>= 64n; bits += 64; }
+      return bits * 0.301; // log10(2) approx
+    };
+
+    const isSmallInput = getEstimateDigits(operand1) < 50 && (!operand2 || getEstimateDigits(operand2) < 50);
+
+    let resultPayload;
+    if (isSimpleOp && isSmallInput) {
+      resultPayload = mathEngine[operation](operand1, operand2);
+    } else {
+      // Offload complex tasks to worker pool to prevent resource exhaustion and event-loop blocking
+      resultPayload = await executeWithPool({ operation, operand1, operand2 });
+    }
+
+    const duration = parseFloat((performance.now() - startTime).toFixed(3));
+
+    if (!resultPayload.success) {
+      logger.warn('Calculation failed', {
+        correlationId,
+        operation,
+        error: resultPayload.error,
+        durationMs: duration
+      });
+
+      return res.status(getHttpStatusCode(resultPayload.error)).json({
+        status: 'error',
+        code: resultPayload.error,
+        message: `Calculation error: ${resultPayload.error}`
+      });
+    }
+
+    const resultString = resultPayload.result.toString();
+
+    logger.info('Calculation successful', {
+      correlationId,
+      operation,
+      durationMs: duration
+    });
+
+    return res.status(200).json({
+      status: 'success',
+      data: {
+        operation,
+        result: resultString
+      }
+    });
+
+  } catch (err) {
+    const duration = parseFloat((performance.now() - startTime).toFixed(3));
+    const isTimeout = err.message === 'COMPUTATION_TIMEOUT';
+
+    logger.error(isTimeout ? 'Calculation timed out' : 'Unhandled system exception during calculation', {
+      correlationId,
+      error: err.message,
+      stack: err.stack,
+      durationMs: duration
+    });
+
+    const statusCode = isTimeout ? 408 : 500;
+    return res.status(statusCode).json({
+      status: 'error',
+      code: isTimeout ? 'TIMEOUT_ERROR' : 'INTERNAL_SERVER_ERROR',
+      message: isTimeout ? 'The calculation exceeded the allowed time limit' : 'An unexpected error occurred'
+    });
+  }
+};
+
+
+================================================================================
+Folder: api/v1_rest_interface/middleware
+================================================================================
+
+------------------------------------------------------------
+File: error-handler.js
+------------------------------------------------------------
+/**
+ * @file error-handler.js
+ * @description Centralized Express error handling middleware for the calculator microservice.
+ * Provides standardized JSON error responses, sanitizes output, integrates with Winston,
+ * and handles edge cases for production stability.
+ */
+
+import logger from '../../../infrastructure/logger.js';
+import config from '../../../config_and_dependencies/config.js';
+
+/**
+ * Standardized Error Handler Middleware.
+ * Captures application errors, logs them appropriately based on severity,
+ * and returns a sanitized JSON response to the client.
+ *
+ * @param {Error} err - The error object thrown by the application.
+ * @param {import('express').Request} req - Express request object.
+ * @param {import('express').Response} res - Express response object.
+ * @param {import('express').NextFunction} next - Express next middleware function.
+ */
+export const errorHandler = (err, req, res, next) => {
+  const correlationId = req.headers['x-correlation-id'] || 'n/a';
+  const isProduction = config.NODE_ENV === 'production';
+
+  // 1. Log the error internally (Async/Non-blocking via Winston)
+  const statusCode = err.status || err.statusCode || 500;
+  
+  if (statusCode >= 500) {
+    logger.error('Internal System Error', {
+      correlationId,
+      error: err,
+      request: {
+        path: req.path,
+        method: req.method,
+        body: req.body,
+      },
+    });
+  } else {
+    logger.warn('Client/Business Logic Error', {
+      correlationId,
+      status: statusCode,
+      error: err.message,
+    });
+  }
+
+  // 2. Prepare the response body
+  const responseBody = {
+    status: 'error',
+    code: err.code || 'INTERNAL_SERVER_ERROR',
+    message: statusCode === 500 && isProduction 
+      ? 'An internal server error occurred' 
+      : err.message,
+    correlationId,
+  };
+
+  // Include error details if not in production and available
+  if (!isProduction && err.details) {
+    responseBody.details = err.details;
+  }
+
+  // 3. Send response
+  try {
+    res.status(statusCode).json(responseBody);
+  } catch (serializationErr) {
+    console.error('Critical failure in error handler serialization:', serializationErr);
+    res.status(500).type('json').send('{"status": "error", "code": "INTERNAL_SERVER_ERROR"}');
+  }
+};
+

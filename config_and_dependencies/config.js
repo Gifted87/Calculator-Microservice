@@ -32,6 +32,14 @@ const schema = Joi.object({
     .integer()
     .positive()
     .required(),
+  WORKER_MIN_THREADS: Joi.number()
+    .integer()
+    .min(1)
+    .required(),
+  WORKER_MAX_THREADS: Joi.number()
+    .integer()
+    .min(1)
+    .required(),
 });
 
 /**
@@ -46,6 +54,8 @@ export const validateConfig = () => {
     LOG_LEVEL: process.env.LOG_LEVEL,
     NODE_ENV: process.env.NODE_ENV,
     API_TIMEOUT_MS: process.env.API_TIMEOUT_MS,
+    WORKER_MIN_THREADS: process.env.WORKER_MIN_THREADS,
+    WORKER_MAX_THREADS: process.env.WORKER_MAX_THREADS,
   }, { abortEarly: false });
 
   if (error) {
@@ -62,6 +72,8 @@ export const validateConfig = () => {
     LOG_LEVEL: value.LOG_LEVEL,
     NODE_ENV: value.NODE_ENV,
     API_TIMEOUT_MS: parseInt(value.API_TIMEOUT_MS, 10),
+    WORKER_MIN_THREADS: parseInt(value.WORKER_MIN_THREADS, 10),
+    WORKER_MAX_THREADS: parseInt(value.WORKER_MAX_THREADS, 10),
   });
 };
 

@@ -23,17 +23,12 @@ export const errorHandler = (err, req, res, next) => {
   const isProduction = config.NODE_ENV === 'production';
 
   // 1. Log the error internally (Async/Non-blocking via Winston)
-  // For 500-series errors, log as 'error' level to alert, otherwise log as 'warn'
   const statusCode = err.status || err.statusCode || 500;
   
   if (statusCode >= 500) {
-    logger.error({
-      message: 'Internal System Error',
+    logger.error('Internal System Error', {
       correlationId,
-      error: {
-        message: err.message,
-        stack: err.stack,
-      },
+      error: err,
       request: {
         path: req.path,
         method: req.method,
@@ -41,16 +36,14 @@ export const errorHandler = (err, req, res, next) => {
       },
     });
   } else {
-    logger.warn({
-      message: 'Client/Business Logic Error',
+    logger.warn('Client/Business Logic Error', {
       correlationId,
       status: statusCode,
-      message: err.message,
+      error: err.message,
     });
   }
 
   // 2. Prepare the response body
-  // Sanitize for production: never leak internal stack traces or raw Error object details.
   const responseBody = {
     status: 'error',
     code: err.code || 'INTERNAL_SERVER_ERROR',
@@ -65,23 +58,11 @@ export const errorHandler = (err, req, res, next) => {
     responseBody.details = err.details;
   }
 
-  // 3. Handle specific operational scenarios
-  // Timeout handling (503/504)
-  if (err.code === 'ETIMEDOUT' || err.message?.includes('timeout')) {
-    return res.status(504).json({
-      status: 'error',
-      code: 'GATEWAY_TIMEOUT',
-      message: 'The request timed out while processing',
-      correlationId,
-    });
-  }
-
-  // Fallback for response serialization failure
+  // 3. Send response
   try {
     res.status(statusCode).json(responseBody);
   } catch (serializationErr) {
-    // If res.json fails (e.g. circular reference), send plain text to ensure output
     console.error('Critical failure in error handler serialization:', serializationErr);
-    res.status(500).send('{"status": "error", "code": "INTERNAL_SERVER_ERROR"}');
+    res.status(500).type('json').send('{"status": "error", "code": "INTERNAL_SERVER_ERROR"}');
   }
 };

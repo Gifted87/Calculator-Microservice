@@ -7,8 +7,10 @@
 import 'dotenv/config';
 import express from 'express';
 import helmet from 'helmet';
+import cors from 'cors';
+import promClient from 'prom-client';
 
-import logger from './infrastructure/logger.js';
+import logger, { flushLogs, panic } from './infrastructure/logger.js';
 import router from './api/v1_rest_interface/routes/routes.js';
 import { errorHandler } from './api/v1_rest_interface/middleware/error-handler.js';
 import config from './config_and_dependencies/config.js';
@@ -17,28 +19,69 @@ import config from './config_and_dependencies/config.js';
 const app = express();
 const PORT = config.PORT || 3000;
 
-// 1. Security Headers: Utilize helmet for standard production security headers
-app.use(helmet());
+// 0. Prometheus Metrics Configuration
+const register = new promClient.Registry();
+promClient.collectDefaultMetrics({ register });
 
-// 2. Performance Tracking Middleware
+const httpRequestDuration = new promClient.Histogram({
+  name: 'http_request_duration_seconds',
+  help: 'Duration of HTTP requests in seconds',
+  labelNames: ['method', 'route', 'status_code'],
+  buckets: [0.01, 0.05, 0.1, 0.5, 1, 2, 5, 10]
+});
+register.registerMetric(httpRequestDuration);
+
+// 1. Security & Lifecycle Middleware
+app.use(helmet());
+app.use(cors()); // Enable CORS for browser-based clients
+
+// 2. Load Balancing & Performance
+// Rate-limiting is intentionally omitted at the application layer to avoid
+// state fragmentation in K8s (siloed pods). Implement at the Ingress/Gateway level.
+app.use(cors()); // Enable CORS for browser-based clients
 // Captures request duration and logs performance metrics in non-blocking JSON format
 app.use((req, res, next) => {
   const start = process.hrtime();
   
   res.on('finish', () => {
     const duration = process.hrtime(start);
-    const durationInMs = (duration[0] * 1e3 + duration[1] / 1e6).toFixed(3);
+    const durationInSeconds = duration[0] + duration[1] / 1e9;
+    const durationInMs = parseFloat((durationInSeconds * 1000).toFixed(3));
     
+    // 1. Log to Winston
     logger.info('Request processed', {
       method: req.method,
       path: req.path,
       durationMs: durationInMs,
       statusCode: res.statusCode,
     });
+
+    // 2. Record to Prometheus
+    httpRequestDuration
+      .labels(req.method, req.route ? req.route.path : req.path, res.statusCode)
+      .observe(durationInSeconds);
   });
   
   next();
 });
+
+// 4. Metrics Exposure (Internal Only - Port 9090)
+const metricsApp = express();
+metricsApp.get('/metrics', async (req, res) => {
+  try {
+    res.set('Content-Type', register.contentType);
+    res.end(await register.metrics());
+  } catch (err) {
+    res.status(500).end(err);
+  }
+});
+
+let metricsServer;
+if (process.env.NODE_ENV !== 'test') {
+  metricsServer = metricsApp.listen(9090, () => {
+    logger.info('Internal metrics operational on port 9090', { port: 9090 });
+  });
+}
 
 // 3. Mount API Routes
 app.use('/api/v1', router);
@@ -57,41 +100,53 @@ if (process.env.NODE_ENV !== 'test') {
 /**
  * Graceful Shutdown Protocol
  * Handles SIGINT/SIGTERM by stopping the server immediately and flushing logs.
- * A 10-second timeout is enforced as a safety fallback.
- * 
- * @param {string} signal - The system signal received.
  */
 const shutdown = (signal) => {
   logger.info(`${signal} received. Initiating graceful shutdown...`);
 
-  if (server) {
-    // Stop accepting new connections
-    server.close(async (err) => {
-      if (err) {
-        logger.error('Error during server shutdown', { error: err.message });
-        process.exit(1);
-      }
-
-      logger.info('Server closed. Flushing logs...');
-      
-      // Flush logs via winston logger instance
-      try {
-        // Assuming logger instance from ./utils/logger.js has an end() or similar mechanism
-        // If using the provided winston wrapper, it ensures completion.
-        process.exit(0);
-      } catch (shutdownErr) {
-        process.exit(1);
-      }
-    });
-  } else {
-    process.exit(0);
-  }
-
   // Force exit after a 10-second grace period if connections hang
-  setTimeout(() => {
-    logger.error('Shutdown timeout exceeded. Forcing exit.');
+  const forceExit = setTimeout(() => {
+    console.error('Shutdown timeout exceeded. Forcing exit.');
     process.exit(1);
   }, 10000);
+
+  const cleanup = async () => {
+    try {
+      logger.info('Flushing logs...');
+      await flushLogs();
+      clearTimeout(forceExit);
+      process.exit(0);
+    } catch (err) {
+      console.error('Error during log flush', err);
+      process.exit(1);
+    }
+  };
+
+  if (server) {
+    // 1. Stop accepting new connections
+    server.close((err) => {
+      if (err) {
+        console.error('Error during server shutdown', err);
+        process.exit(1);
+      }
+      logger.info('Server closed.');
+      cleanup();
+    });
+
+    // 2. Proactively terminate keep-alive connections
+    if (metricsServer) metricsServer.close();
+
+    if (typeof server.closeIdleConnections === 'function') {
+      server.closeIdleConnections();
+    }
+    if (typeof server.closeAllConnections === 'function') {
+      // Small delay to allow headers/small-payloads to finish naturally
+      // before a hard termination of all sockets.
+      setTimeout(() => server.closeAllConnections(), 2000);
+    }
+  } else {
+    cleanup();
+  }
 };
 
 // Listen for termination signals
@@ -100,20 +155,18 @@ if (process.env.NODE_ENV !== 'test') {
   process.on('SIGTERM', () => shutdown('SIGTERM'));
 
   // Uncaught exception handling to prevent unstable state
-  process.on('uncaughtException', (err) => {
-    logger.error('Uncaught Exception detected', { 
-      error: err.message, 
-      stack: err.stack 
-    });
-    // Terminate process immediately to allow orchestration recovery
+  process.on('uncaughtException', async (err) => {
+    panic('Uncaught Exception', err);
+    await flushLogs();
     process.exit(1);
   });
 
   // Unhandled promise rejection handling
-  process.on('unhandledRejection', (reason) => {
-    logger.error('Unhandled Promise Rejection detected', { reason });
+  process.on('unhandledRejection', async (reason) => {
+    panic('Unhandled Promise Rejection', reason);
+    await flushLogs();
     process.exit(1);
   });
 }
 
-export default app;
+export { app as default, metricsApp };

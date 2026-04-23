@@ -33,13 +33,24 @@ const schema = Joi.object({
     .valid('add', 'subtract', 'multiply', 'divide', 'exponentiation', 'sqrt', 'modulo')
     .required(),
   operand1: Joi.alternatives()
-    .try(Joi.string().regex(/^-?\d+$/), Joi.number().integer())
+    .try(Joi.string().regex(/^-?\d+$/).max(250), Joi.number().integer())
     .custom(bigIntValidator)
     .required(),
   operand2: Joi.alternatives()
-    .try(Joi.string().regex(/^-?\d+$/), Joi.number().integer())
+    .try(Joi.string().regex(/^-?\d+$/).max(250), Joi.number().integer())
     .custom(bigIntValidator)
-    .optional(),
+    .custom((value, helpers) => {
+      const { operation } = helpers.state.ancestors[0];
+      if (operation === 'exponentiation' && BigInt(value) > 100000n) {
+        return helpers.error('any.invalid', { message: 'Exponent exceeds mathematical safety boundary (100,000)' });
+      }
+      return value;
+    })
+    .when('operation', {
+      is: Joi.valid('sqrt'),
+      then: Joi.forbidden(),
+      otherwise: Joi.required(),
+    }),
 }).unknown(false);
 
 /**
@@ -54,10 +65,20 @@ export const validateCalculateRequest = async (req, res, next) => {
   const correlationId = req.headers['x-correlation-id'] || 'n/a';
 
   try {
-    // 1. Check for Prototype Pollution attempts
-    const bodyKeys = Object.keys(req.body);
-    const forbiddenKeys = ['__proto__', 'constructor', 'prototype'];
-    if (bodyKeys.some((key) => forbiddenKeys.includes(key))) {
+    // 1. Check for Prototype Pollution attempts (Recursive Deep-Property & Circular-Safe)
+    const deepCheck = (obj, seen = new WeakSet()) => {
+      if (!obj || typeof obj !== 'object') return false;
+      if (seen.has(obj)) return false;
+      seen.add(obj);
+
+      const forbiddenKeys = ['__proto__', 'constructor', 'prototype'];
+      // Use Reflect.ownKeys to catch non-enumerable properties like __proto__
+      const keys = Reflect.ownKeys(obj);
+      if (keys.some(key => forbiddenKeys.includes(key))) return true;
+      return keys.some(key => typeof obj[key] === 'object' && deepCheck(obj[key], seen));
+    };
+
+    if (deepCheck(req.body)) {
       throw new Error('Forbidden property access detected');
     }
 
@@ -73,8 +94,7 @@ export const validateCalculateRequest = async (req, res, next) => {
         message: d.message,
       }));
 
-      logger.warn({
-        message: 'Validation failed',
+      logger.warn('Validation failed', {
         correlationId,
         details,
       });
@@ -96,8 +116,7 @@ export const validateCalculateRequest = async (req, res, next) => {
 
     next();
   } catch (err) {
-    logger.error({
-      message: 'Critical validation error',
+    logger.error('Critical validation error', {
       correlationId,
       error: err.message,
     });

@@ -1,25 +1,53 @@
-/**
- * @file controller.js
- * @description Controller orchestration layer for the Calculator microservice.
- * Maps validated API requests to the arithmetic engine, handles error translation,
- * observability, and BigInt serialization.
- */
-
-import * as mathEngine from '../../../core/calculator.js';
+import Piscina from 'piscina';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import logger from '../../../infrastructure/logger.js';
+import config from '../../../config_and_dependencies/config.js';
 import { performance } from 'perf_hooks';
+import * as mathEngine from '../../../core/calculator.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const WORKER_PATH = path.resolve(__dirname, '../../../infrastructure/math-worker.js');
+
+// Initialize Worker Pool with bound resource limits
+const workerPool = new Piscina({
+  filename: WORKER_PATH,
+  minThreads: config.WORKER_MIN_THREADS,
+  maxThreads: config.WORKER_MAX_THREADS,
+  idleTimeout: 30000,
+  maxQueueSize: 100,
+});
+
+/**
+ * Executes math operations with a hard timeout using the worker pool.
+ */
+const executeWithPool = async (task) => {
+  try {
+    // AbortController for granular timeout control
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), config.API_TIMEOUT_MS);
+
+    const result = await workerPool.run(task, { signal: controller.signal });
+    clearTimeout(timeout);
+    return result;
+  } catch (err) {
+    if (err.name === 'AbortError' || err.message.includes('Task timed out')) {
+      throw new Error('COMPUTATION_TIMEOUT');
+    }
+    throw err;
+  }
+};
 
 /**
  * Maps domain-specific errors to HTTP status codes.
- * 
- * @param {string} errorType - The error type returned by the math engine.
- * @returns {number} - The corresponding HTTP status code.
  */
 const getHttpStatusCode = (errorType) => {
   switch (errorType) {
     case 'DIVISION_BY_ZERO':
     case 'INVALID_INPUT':
     case 'OVERFLOW':
+    case 'COMPUTATION_TIMEOUT':
       return 422;
     default:
       return 500;
@@ -28,10 +56,6 @@ const getHttpStatusCode = (errorType) => {
 
 /**
  * Handles incoming calculation requests.
- * 
- * @param {import('express').Request} req - Express request object containing validatedBody.
- * @param {import('express').Response} res - Express response object.
- * @returns {Promise<void>}
  */
 export const calculate = async (req, res) => {
   const correlationId = req.headers['x-correlation-id'] || 'n/a';
@@ -39,44 +63,37 @@ export const calculate = async (req, res) => {
 
   try {
     const { operation, operand1, operand2 } = req.validatedBody;
-    let resultPayload;
+    
+    // Heuristic: Execute simple/small operations synchronously to avoid IPC overhead.
+    // Structural cloning into workers is more expensive than O(1) BigInt addition.
+    const isSimpleOp = ['add', 'subtract', 'multiply'].includes(operation);
+    
+    // Efficient bit-length estimation to avoid O(N^2) toString() overhead
+    const getEstimateDigits = (v) => {
+      let bits = 0;
+      let t = v < 0n ? -v : v;
+      while (t > 0n) { t >>= 64n; bits += 64; }
+      return bits * 0.301; // log10(2) approx
+    };
 
-    // Direct invocation mapping to ensure security and prevent dynamic injection
-    switch (operation) {
-      case 'add':
-        resultPayload = await Promise.resolve(mathEngine.add(operand1, operand2));
-        break;
-      case 'subtract':
-        resultPayload = await Promise.resolve(mathEngine.subtract(operand1, operand2));
-        break;
-      case 'multiply':
-        resultPayload = await Promise.resolve(mathEngine.multiply(operand1, operand2));
-        break;
-      case 'divide':
-        resultPayload = await Promise.resolve(mathEngine.divide(operand1, operand2));
-        break;
-      case 'exponentiation':
-        resultPayload = await Promise.resolve(mathEngine.power(operand1, operand2));
-        break;
-      case 'sqrt':
-        resultPayload = await Promise.resolve(mathEngine.sqrt(operand1));
-        break;
-      case 'modulo':
-        resultPayload = await Promise.resolve(mathEngine.modulo(operand1, operand2));
-        break;
-      default:
-        return res.status(400).json({ status: 'error', code: 'INVALID_OPERATION', message: 'Unsupported operation' });
+    const isSmallInput = getEstimateDigits(operand1) < 50 && (!operand2 || getEstimateDigits(operand2) < 50);
+
+    let resultPayload;
+    if (isSimpleOp && isSmallInput) {
+      resultPayload = mathEngine[operation](operand1, operand2);
+    } else {
+      // Offload complex tasks to worker pool to prevent resource exhaustion and event-loop blocking
+      resultPayload = await executeWithPool({ operation, operand1, operand2 });
     }
 
-    const duration = performance.now() - startTime;
+    const duration = parseFloat((performance.now() - startTime).toFixed(3));
 
     if (!resultPayload.success) {
-      logger.warn({
-        message: 'Calculation failed',
+      logger.warn('Calculation failed', {
         correlationId,
         operation,
         error: resultPayload.error,
-        duration: `${duration.toFixed(3)}ms`
+        durationMs: duration
       });
 
       return res.status(getHttpStatusCode(resultPayload.error)).json({
@@ -86,14 +103,12 @@ export const calculate = async (req, res) => {
       });
     }
 
-    // Convert BigInt to string for JSON serialization
     const resultString = resultPayload.result.toString();
 
-    logger.info({
-      message: 'Calculation successful',
+    logger.info('Calculation successful', {
       correlationId,
       operation,
-      duration: `${duration.toFixed(3)}ms`
+      durationMs: duration
     });
 
     return res.status(200).json({
@@ -105,19 +120,21 @@ export const calculate = async (req, res) => {
     });
 
   } catch (err) {
-    const duration = performance.now() - startTime;
-    logger.error({
-      message: 'Unhandled system exception during calculation',
+    const duration = parseFloat((performance.now() - startTime).toFixed(3));
+    const isTimeout = err.message === 'COMPUTATION_TIMEOUT';
+
+    logger.error(isTimeout ? 'Calculation timed out' : 'Unhandled system exception during calculation', {
       correlationId,
       error: err.message,
       stack: err.stack,
-      duration: `${duration.toFixed(3)}ms`
+      durationMs: duration
     });
 
-    return res.status(500).json({
+    const statusCode = isTimeout ? 408 : 500;
+    return res.status(statusCode).json({
       status: 'error',
-      code: 'INTERNAL_SERVER_ERROR',
-      message: 'An unexpected error occurred processing the request'
+      code: isTimeout ? 'TIMEOUT_ERROR' : 'INTERNAL_SERVER_ERROR',
+      message: isTimeout ? 'The calculation exceeded the allowed time limit' : 'An unexpected error occurred'
     });
   }
 };

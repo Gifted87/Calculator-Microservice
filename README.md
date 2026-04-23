@@ -82,6 +82,8 @@ Follow these steps strictly to bootstrap the project:
    - `NODE_ENV`: `development` (use `production` for deployments)
    - `LOG_LEVEL`: `info` or `debug`
    - `API_TIMEOUT_MS`: `5000`
+   - `WORKER_MIN_THREADS`: `1`
+   - `WORKER_MAX_THREADS`: `2`
 
 ### 3.3. Running the Service
 To start the microservice in a production-like state, run:
@@ -139,6 +141,8 @@ The `config_and_dependencies/config.js` module uses `Joi` to validate the enviro
 | `NODE_ENV` | String | Yes | Application environment (`development`, `production`, `test`). |
 | `LOG_LEVEL` | String | Yes | Winston logging verbosity (`debug`, `info`, `warn`, `error`). |
 | `API_TIMEOUT_MS` | Integer | Yes | Default timeout boundary for requests. |
+| `WORKER_MIN_THREADS`| Integer | Yes | Minimum number of threads for the pooling engine. |
+| `WORKER_MAX_THREADS`| Integer | Yes | Maximum number of threads (bind to K8s CPU limits). |
 
 ---
 
@@ -337,26 +341,22 @@ To deploy this application in a modern cloud environment, it must be containeriz
 ```dockerfile
 # Build Stage
 FROM node:18-alpine AS builder
-WORKDIR /usr/src/app
+WORKDIR /app
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
+
+# Project Source
+COPY . .
 
 # Production Stage
 FROM node:18-alpine
-WORKDIR /usr/src/app
-# Copy only production node_modules and source code
-COPY --from=builder /usr/src/app/node_modules ./node_modules
+WORKDIR /app
+COPY --from=builder /app/node_modules ./node_modules
 COPY . .
 
-# Bind to unprivileged port
-EXPOSE 3000
-# Run as non-root user
+# Bind to API and Metrics ports
+EXPOSE 3000 9090
 USER node
-
-# Healthcheck
-HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-  CMD curl -f http://localhost:3000/api/v1/health || exit 1
-
 CMD ["npm", "start"]
 ```
 By utilizing an Alpine Linux base image and a multi-stage build, the final container size is drastically reduced, and build tools are stripped out, minimizing the attack surface. Running as the `node` user prevents privilege escalation if the application is somehow compromised.
@@ -392,6 +392,15 @@ spec:
           value: "3000"
         - name: LOG_LEVEL
           value: "info"
+        - name: WORKER_MIN_THREADS
+          value: "2"
+        - name: WORKER_MAX_THREADS
+          value: "4"
+        ports:
+        - containerPort: 3000
+          name: http
+        - containerPort: 9090
+          name: metrics
         livenessProbe:
           httpGet:
             path: /api/v1/health
@@ -443,7 +452,10 @@ When logs are output as raw strings, centralized aggregators (like ELK Stack - E
 ```
 This allows DevOps engineers to instantly query: *"Show me all logs where `duration` > 500ms and `operation` is 'exponentiation'."*
 
-### 11.2. Distributed Tracing (Correlation IDs)
+### 11.2. Internal Metrics with Prometheus
+To prevent infrastructure leakage, the system exposes a `/metrics` endpoint on an isolated internal port (**9090**). This allows Prometheus to scrape detailed telemetry (event loop lag, request histograms, math operations) without exposing this data to the public internet on the main API port.
+
+### 11.3. Distributed Tracing (Correlation IDs)
 Every request entering the system is either assigned a unique UUIDv4 by the router or inherits an existing `x-correlation-id` from the HTTP headers (if an API Gateway or a frontend upstream service provided one).
 
 This ID is relentlessly passed through every layer of the system. If the `validator.js` middleware rejects the payload, it logs the failure alongside the `correlationId`. If the domain engine throws an error, the `controller.js` catches it and logs the stack trace alongside the identical `correlationId`. When the client receives the `4xx` or `5xx` error, the `correlationId` is embedded in the response body.

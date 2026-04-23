@@ -112,11 +112,21 @@ export function sqrt(value) {
   if (v === null || v < ZERO) return { success: false, result: null, error: 'INVALID_INPUT' };
   if (v === ZERO) return { success: true, result: ZERO, error: null };
   
-  let x = v;
-  let y = (x + ONE) / 2n;
+  // Optimization: Start with an initial guess based on bit-length.
+  // We use bitwise shifts to calculate bitLength to avoid the O(N^2) overhead 
+  // of converting a massive BigInt to a string.
+  let bitLength = 0;
+  let temp = v;
+  while (temp > 0n) {
+    temp >>= 64n;
+    bitLength += 64;
+  }
+  let x = ONE << BigInt(Math.ceil(bitLength / 2));
+  
+  let y = (x + v / x) >> 1n;
   while (y < x) {
     x = y;
-    y = (x + v / x) / 2n;
+    y = (x + v / x) >> 1n;
   }
   return { success: true, result: x, error: null };
 }
