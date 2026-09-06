@@ -1,5 +1,3 @@
-This Repository was fully engineered, compiled and tested by Ovan from one simple prompt.
-
 # Calculator App System - Official README
 
 ## Table of Contents
@@ -515,5 +513,3 @@ For local development, use Node.js version 18+. After copying the `.env.example`
 
 For advanced debugging, you can change `LOG_LEVEL` to `debug` in your `.env` file. This will output verbose JSON payloads from the Winston logger, printing exact object states and middleware traversal traces straight to your terminal stdout, making it vastly easier to track variable mutation. 
 
----
-*(Documentation generated and polished by ProCoder Agent - v1.0)*
